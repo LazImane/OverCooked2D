@@ -1,5 +1,5 @@
 63f7b34db8d8cdea90c76aacccf841ec
-::res://::1760545801
+::res://::1760554869
 game.tscn::PackedScene::5905333813600837790::1760543113::0::1::::<><><>0<>0<><>::uid://dpa6d8byrp3t7::::res://assets/pixelinterior_LRK/floorswalls_LRK.png<>uid://ddldpwcweumie::::res://assets/pixelinterior_LRK/kitchen_LRK.png<>uid://blrk31qs3dh68::::res://assets/food and kitchenware icons/Cover.jpeg<>uid://cu54w2fv5xgxi::::res://scripts/Station.gd<>uid://cvml5oqa28lqg::::res://scripts/GameManager.gd<>uid://bs5763pl5cogu::::res://scripts/bot.gd<>uid://dwgs04fxuldbi::::res://assets/food and kitchenware icons/chef.png
 icon.svg::CompressedTexture2D::5693937451249065521::1760529037::1760545713::1::::<><><>0<>0<>e4ce64f7983195a074b79bfc619568b3<>res://.godot/imported/icon.svg-218a8f2b3041327d8a5756f3a245f83b.ctex::
 ingredients_station.gd::GDScript::684979641808270840::1760538937::0::1::::<>Area2D<><>0<>0<><>::
