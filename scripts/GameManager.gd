@@ -8,7 +8,7 @@ var stations_by_type: Dictionary = {}
 func _ready() -> void:
 	_register_stations()
 	_setup_demo_data()
-	process_recipe("soup")
+	process_recipe("salad")
 
 func _register_stations() -> void:
 	stations_by_type.clear()
@@ -23,8 +23,14 @@ func _register_stations() -> void:
 	print("Registered stations:", stations_by_type.keys())
 
 func _setup_demo_data() -> void:
+	#soup 
 	ingredients["soup_ingredient"] = {"name":"soup_ingredient", "status":"raw"}
 	recipes["soup"] = ["soup_ingredient"]
+	#salad
+	ingredients["lettuce"] = {"name":"lettuce_salad" , "status":"raw"} 
+	ingredients["tomato"]= {"name":"tomato_salad", "status":"raw"}
+	recipes["salad"] = ["lettuce", "tomato"]
+
 
 func process_recipe(recipe_name: String) -> void:
 	if not recipes.has(recipe_name):

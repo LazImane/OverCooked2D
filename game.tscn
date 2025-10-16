@@ -35900,6 +35900,10 @@ script = ExtResource("5_7jktm")
 
 [node name="Bot" type="CharacterBody2D" parent="."]
 script = ExtResource("6_eow3j")
+ingredients_path = NodePath("../IngredientsStation/CollisionShape2D")
+chop_path = NodePath("../choppingStation/CollisionShape2D")
+cook_path = NodePath("../CookingStation/CollisionShape2D")
+serve_path = NodePath("../ServingStation/CollisionShape2D")
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="Bot"]
 position = Vector2(52, 4)
