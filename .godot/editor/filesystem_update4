@@ -1,3 +1,4 @@
 res://game.tscn
 res://scripts/Station.gd
 res://scripts/bot.gd
+res://scripts/GameManager.gd

@@ -54,6 +54,16 @@ func process(ingredient: Dictionary) -> String:
 # ------------------------
 # Called when the bot presses/interacts with this station.
 func interact() -> void:
+	print("[STATION DEBUG] ", name, " interact called. station_type: ", station_type, " current_item: '", current_item, "'")
+	
+	match station_type:
+		"Ingredient":
+			# spawn an ingredient if empty
+			if current_item == "":
+				current_item = spawn_item_when_interacted
+				print("[STATION DEBUG] Spawned: '", current_item, "' on ", name)
+			else:
+				print("[STATION DEBUG] Station not empty, has: '", current_item, "'")
 	match station_type:
 		"Ingredient":
 			# spawn an ingredient if empty

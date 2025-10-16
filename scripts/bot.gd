@@ -9,15 +9,11 @@ enum Act {
 	NONE
 }
 
-@export var speed := 140.0
+@export var speed := 70.0
 @export var accel := 800.0
-@export var stop_distance := 16.0
+@export var stop_distance := 130.0
 
-@export var ingredients_path: NodePath
-@export var chop_path: NodePath
-@export var cook_path: NodePath
-@export var serve_path: NodePath
-
+# Remove the NodePath exports and replace with group-based station finding
 var st_ing: Node
 var st_chop: Node
 var st_cook: Node
@@ -25,43 +21,69 @@ var st_serve: Node
 
 var I := {
 	"target": Vector2.ZERO,
-	"carrying": "",     # "", "tomato", "chopped_tomato", "cooked_tomato"
+	"carrying": "",     # "", "soup_ingredient", "chopped_soup_ingredient", "cooked_soup_ingredient"
 	"phase": "to_ing"   # to_ing -> to_chop -> to_cook -> to_serve -> done
 }
 
+@onready var sprite = $Sprite2D  # Add this for sprite flipping
+@onready var navigation_agent = $NavigationAgent2D
+
 func _ready() -> void:
-	st_ing  = get_node_or_null(ingredients_path)
-	st_chop = get_node_or_null(chop_path)
-	st_cook = get_node_or_null(cook_path)
-	st_serve= get_node_or_null(serve_path)
+	# Find stations by type instead of by path
+	find_stations_by_type()
+	
 	if not st_ing or not st_chop or not st_cook or not st_serve:
-		push_error("Bot: assign all 4 station paths (ingredients/chop/cook/serve).")
+		push_error("Bot: could not find all 4 station types (ingredients/chop/cook/serve).")
 		set_physics_process(false)
 		return
-	I.target = st_ing.position
+	
+	I.target = st_ing.global_position
 	velocity = Vector2.ZERO
 	print("[BOT] ready. phase=", I.phase)
+	navigation_agent.target_desired_distance = stop_distance
+	navigation_agent.path_desired_distance = stop_distance
+
+func find_stations_by_type() -> void:
+	var stations = get_tree().get_nodes_in_group("stations")
+	for station in stations:
+		match station.station_type:
+			"Ingredient":
+				st_ing = station
+			"Chopping":
+				st_chop = station
+			"Cooking":
+				st_cook = station
+			"Serving":
+				st_serve = station
+	
+	print("[BOT] Found stations - Ing: ", st_ing != null, ", Chop: ", st_chop != null, ", Cook: ", st_cook != null, ", Serve: ", st_serve != null)
 
 func _physics_process(delta: float) -> void:
 	var per := see()
+	print("[QUICK DEBUG] Distance to ing: ", global_position.distance_to(st_ing.global_position), " | Stop dist: ", stop_distance)
 	next(I, per)
 	var a: Act = action(I, per)
 	act(a, delta)
+	
+	# Add sprite flipping based on movement direction
+	if sprite and velocity.x != 0:
+		sprite.flip_h = velocity.x < 0
+	
 	move_and_slide()
 
 # ---------- AGENT PARTS ----------
 func see() -> Dictionary:
 	return {
-		"bot_pos": position,
-		"ing_pos": st_ing.position,
-		"chop_pos": st_chop.position,
-		"cook_pos": st_cook.position,
-		"serve_pos": st_serve.position,
+		"bot_pos": global_position,
+		"ing_pos": st_ing.global_position,
+		"chop_pos": st_chop.global_position,
+		"cook_pos": st_cook.global_position,
+		"serve_pos": st_serve.global_position,
 
-		"near_ing": position.distance_to(st_ing.position) <= stop_distance,
-		"near_chop": position.distance_to(st_chop.position) <= stop_distance,
-		"near_cook": position.distance_to(st_cook.position) <= stop_distance,
-		"near_serve": position.distance_to(st_serve.position) <= stop_distance,
+		"near_ing": global_position.distance_to(st_ing.global_position) <= stop_distance,
+		"near_chop": global_position.distance_to(st_chop.global_position) <= stop_distance,
+		"near_cook": global_position.distance_to(st_cook.global_position) <= stop_distance,
+		"near_serve": global_position.distance_to(st_serve.global_position) <= stop_distance,
 
 		"ing_has":  _station_has_item(st_ing),
 		"chop_has": _station_has_item(st_chop),
@@ -103,17 +125,24 @@ func action(state: Dictionary, per: Dictionary) -> Act:
 			return Act.NONE
 
 func act(a: Act, delta: float) -> void:
+	print("[BOT DEBUG] Current action: ", a, " | Carrying: '", I.carrying, "' | Phase: ", I.phase)
+	
 	match a:
 		# INGREDIENTS
 		Act.MOVE_TO_ING:
 			_seek(I.target, delta)
 		Act.TAKE_FROM_ING:
-			_call_interact(st_ing) # spawns tomato if empty
+			print("[BOT DEBUG] Attempting to take from ingredient station")
+			_call_interact(st_ing) # spawns soup_ingredient if empty
+			print("[BOT DEBUG] After interact - station current_item: '", _get_current_item(st_ing), "'")
 			var got := _take_item_from(st_ing)
+			print("[BOT DEBUG] Took item: '", got, "'")
 			if got != "":
 				I.carrying = got
 				print("[BOT] took:", I.carrying)
 				I.phase = "to_chop"
+			else:
+				print("[BOT ERROR] Failed to take item from ingredient station!")
 
 		# CHOP
 		Act.MOVE_TO_CHOP:
@@ -124,7 +153,7 @@ func act(a: Act, delta: float) -> void:
 					print("[BOT] placed on chop:", I.carrying)
 					I.carrying = ""
 		Act.CHOP:
-			_call_interact(st_chop)  # "tomato" -> "chopped_tomato"
+			_call_interact(st_chop)  # "soup_ingredient" -> "chopped_soup_ingredient"
 			print("[BOT] chopped ->", _get_current_item(st_chop))
 			# pick it back up to carry to COOK
 			var taken := _take_item_from(st_chop)
@@ -141,7 +170,7 @@ func act(a: Act, delta: float) -> void:
 					print("[BOT] placed on cook:", I.carrying)
 					I.carrying = ""
 		Act.COOK:
-			_call_interact(st_cook)  # "chopped_tomato" -> "cooked_tomato"
+			_call_interact(st_cook)  # "chopped_soup_ingredient" -> "cooked_soup_ingredient"
 			print("[BOT] cooked ->", _get_current_item(st_cook))
 			# pick it back up to carry to SERVE
 			var taken2 := _take_item_from(st_cook)
@@ -158,16 +187,15 @@ func act(a: Act, delta: float) -> void:
 					print("[BOT] placed on serve:", I.carrying)
 					I.carrying = ""
 		Act.SERVE:
-			_call_interact(st_serve) # consumes cooked_tomato
+			_call_interact(st_serve) # consumes cooked_soup_ingredient
 			print("[BOT] served. done ✅")
 			I.phase = "done"
 
 		Act.NONE:
 			velocity = velocity.move_toward(Vector2.ZERO, accel * delta)
-
 # ---------- movement ----------
 func _seek(target: Vector2, delta: float) -> void:
-	var to_target: Vector2 = target - position
+	var to_target: Vector2 = target - global_position
 	var desired: Vector2 = (to_target.normalized() * speed) if to_target.length() > 0.001 else Vector2.ZERO
 	if to_target.length() <= stop_distance:
 		velocity = velocity.move_toward(Vector2.ZERO, accel * delta)

@@ -8,7 +8,7 @@ var stations_by_type: Dictionary = {}
 func _ready() -> void:
 	_register_stations()
 	_setup_demo_data()
-	process_recipe("soup")
+	#process_recipe("soup")
 
 func _register_stations() -> void:
 	stations_by_type.clear()
