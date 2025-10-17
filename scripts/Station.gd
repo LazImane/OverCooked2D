@@ -5,7 +5,7 @@ signal station_processed(ingredient_name: String, new_status: String)
 
 # Used by the bot
 var current_item: String = ""  # e.g. "", "tomato", "chopped_tomato", "cooked_tomato"
-@export var spawn_item_when_interacted: String = "tomato"  # fallback if GM not available
+@export var spawn_item_when_interacted: String = ""  # fallback if GM not available
 
 # --- internals ---
 var _gm: Node = null
@@ -125,24 +125,45 @@ func get_current_item() -> String:
 # Helpers to talk to GameManager
 # ------------------------
 func _spawn_from_recipe_or_fallback() -> String:
+	# 1) Ensure we have a reference to the GameManager
 	if _gm == null:
 		_gm = get_tree().get_first_node_in_group("game_manager")
+	if _gm == null:
+		push_warning("[STATION] No GameManager found — cannot determine ingredient to spawn.")
+		return ""  # no spawn possible
 
-	# 1) Preferred: manager provides next_base_item()
-	if _gm and _gm.has_method("next_base_item"):
+	# 2) Try to use GameManager-provided helper
+	if _gm.has_method("next_base_item"):
 		var id := String(_gm.next_base_item())
 		if id != "":
+			print("[STATION] Spawned from GM.next_base_item():", id)
 			return id
 
-	# 2) Read allowed base items from the active recipe on the manager
-	var base_items := _gm_get_allowed_base_items()
-	if base_items.size() > 0:
-		var id2 := String(base_items[_local_spawn_idx % base_items.size()])
-		_local_spawn_idx += 1
-		return id2
+	# 3) Try reading directly from the current recipe
+	var current_recipe_id := "demo_salad"
+	if _gm.get("current_recipe_id") != "":
+		var rid_val = _gm.get("current_recipe_id")
+		if typeof(rid_val) == TYPE_STRING and rid_val != "":
+			current_recipe_id = rid_val
 
-	# 3) Fallback to exported default
-	return spawn_item_when_interacted
+	var recipes_val = _gm.get("recipes")
+	if typeof(recipes_val) == TYPE_DICTIONARY and recipes_val.has(current_recipe_id):
+		var rec: Dictionary = recipes_val[current_recipe_id]
+		var base_items: Array = rec.get("base_items", [])
+		if base_items.size() > 0:
+			var id2 := String(base_items[_local_spawn_idx % base_items.size()])
+			_local_spawn_idx += 1
+			print("[STATION] Spawned from recipe '%s': %s" % [current_recipe_id, id2])
+			return id2
+
+	# 4) If we get here, try exported fallback — only if non-empty
+	if spawn_item_when_interacted != "":
+		print("[STATION] Using fallback exported item:", spawn_item_when_interacted)
+		return spawn_item_when_interacted
+
+	# 5) If absolutely nothing works, return a placeholder to avoid crash
+	push_warning("[STATION] No ingredients available to spawn — returning placeholder 'unknown_item'")
+	return "unknown_item"
 
 func _gm_get_allowed_base_items() -> Array:
 	if _gm == null:

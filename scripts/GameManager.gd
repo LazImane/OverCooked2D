@@ -35,7 +35,7 @@ func _setup_demo_data() -> void:
 	recipes = {
 		"demo_salad": {
 			"flow": ["Ingredient", "Chopping", "Serving"],
-			"base_items": ["tomato", "lettuce", "cucumber"]
+			"base_items": ["lettuce", "tomato", "cucumber"]
 		},
 		"demo_soup": {
 			"flow": ["Ingredient", "Chopping", "Cooking", "Serving"],
