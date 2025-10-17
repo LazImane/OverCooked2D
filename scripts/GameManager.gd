@@ -9,7 +9,7 @@ var _spawn_idx: int = 0
 
 func get_recipe_flow(recipe_name: String) -> Array:
 	if recipes.has(recipe_name):
-		return recipes[recipe_name].get("flow", station_order.duplicate())
+		return recipes[recipe_name].get("flow", ["flow"])
 	return station_order.duplicate()
 
 func get_recipe_ingredients(recipe_name: String) -> Array:

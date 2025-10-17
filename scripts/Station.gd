@@ -8,7 +8,7 @@ var current_item: String = ""  # e.g. "", "tomato", "chopped_tomato", "cooked_to
 @export var spawn_item_when_interacted: String = ""  # fallback if GM not available
 
 # --- internals ---
-var _gm: Node = null
+var _gm: Node = get_tree().get_first_node_in_group("game_manager")
 var _local_spawn_idx := 0  # local round-robin if GM doesn't expose next_base_item()
 var items: Array = []
 
@@ -82,11 +82,17 @@ func interact() -> void:
 					current_item = spawn_item_when_interacted
 
 		"Chopping":
-			if current_item != "" and not current_item.begins_with("chopped_") and not current_item.begins_with("cooked_"):
+			if "Chopping" not in _gm.get_recipe_flow("demo_salad"):
+				print("SKIPPED CHOPPING")
+			if current_item != "" and not current_item.begins_with("chopped_") and not current_item.begins_with("cooked_") :
 				current_item = "chopped_%s" % current_item
 				print("[STATION] Chopped ->", current_item, "on", name)
+			
 
 		"Cooking":
+			if "Cooking" not in _gm.get_recipe_flow("demo_salad"):
+				print("SKIPPED COOKING")
+
 			if current_item.begins_with("chopped_"):
 				var base := current_item.substr("chopped_".length())
 				current_item = "cooked_%s" % base
