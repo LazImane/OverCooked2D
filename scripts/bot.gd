@@ -1,6 +1,6 @@
 extends CharacterBody2D
 # Agent loop: see -> next -> action -> act
-
+# finished version for the first step
 enum Act {
 	MOVE_TO_ING, TAKE_FROM_ING,
 	MOVE_TO_CHOP, PLACE_ON_CHOP, CHOP,
