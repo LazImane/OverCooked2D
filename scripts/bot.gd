@@ -187,9 +187,17 @@ func act(a: Act, delta: float) -> void:
 					print("[BOT] placed on serve:", I.carrying)
 					I.carrying = ""
 		Act.SERVE:
-			_call_interact(st_serve) # consumes cooked_soup_ingredient
-			print("[BOT] served. done ✅")
-			I.phase = "done"
+			_call_interact(st_serve) # Serving station will consume/add to plate
+			# Decide next state based on plate completion
+			var done := false
+			if st_serve and st_serve.has_method("plate_is_complete"):
+				done = bool(st_serve.plate_is_complete())
+
+			if done:
+				I.phase = "done"      # or "to_ing" if you want to start a NEW order right away
+			else:
+				I.phase = "to_ing"    # continue with the next ingredient for this order
+
 
 		Act.NONE:
 			velocity = velocity.move_toward(Vector2.ZERO, accel * delta)

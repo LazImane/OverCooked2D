@@ -10,10 +10,33 @@ var current_item: String = ""  # e.g. "", "tomato", "chopped_tomato", "cooked_to
 # --- internals ---
 var _gm: Node = null
 var _local_spawn_idx := 0  # local round-robin if GM doesn't expose next_base_item()
+var _plate_need: Array = []   # required base ids (e.g. ["tomato","lettuce","cucumber"])
+var _plate_have: Array = [] 
 
 func _ready() -> void:
 	add_to_group("stations")
 	_gm = get_tree().get_first_node_in_group("game_manager")
+	# If this station is Serving, fetch the recipe needs now
+	if station_type == "Serving" and _gm:
+		var rid_val = _gm.get("current_recipe_id")
+		var rid: String = (rid_val if typeof(rid_val) == TYPE_STRING else "demo_salad")
+		var recipes_val = _gm.get("recipes")
+		if typeof(recipes_val) == TYPE_DICTIONARY:
+			var rec: Dictionary = (recipes_val.get(rid, Dictionary())) as Dictionary
+			_plate_need = (rec.get("required_bases", Array())) as Array
+	_plate_have.clear()
+
+func plate_is_complete() -> bool:
+	if _plate_need.is_empty():
+		return false
+	# All required bases present (order doesn’t require duplicates)
+	for b in _plate_need:
+		if not _plate_have.has(b):
+			return false
+	return true
+
+func plate_state() -> Dictionary:
+	return {"need": _plate_need.duplicate(), "have": _plate_have.duplicate()}
 
 # Optional alias so GameManager can call either name
 func process_item(item: Dictionary) -> String:
@@ -63,38 +86,62 @@ func interact() -> void:
 	match station_type:
 		"Ingredient":
 			if current_item == "":
-				# Ask GameManager for the next ingredient from the *active recipe*.
-				# Priority:
-				#   1) gm.next_base_item() if it exists
-				#   2) round-robin over gm.recipes[current_recipe_id or "demo_salad"].base_items
-				#   3) fallback to exported spawn_item_when_interacted
 				var spawn := _spawn_from_recipe_or_fallback()
 				if spawn != "":
 					current_item = spawn
-					print("[STATION] Ingredient spawned:", current_item, "on", name)
-				else:
-					print("[STATION] No base items available; using fallback:", spawn_item_when_interacted)
-					current_item = spawn_item_when_interacted
+					emit_signal("item_changed", "", current_item)  # spawned
 		"Chopping":
 			if current_item != "" and not current_item.begins_with("chopped_") and not current_item.begins_with("cooked_"):
+				var before := current_item
 				current_item = "chopped_%s" % current_item
-				print("[STATION] Chopped ->", current_item, "on", name)
+				emit_signal("item_changed", before, current_item)
 		"Cooking":
 			if current_item.begins_with("chopped_"):
+				var before := current_item
 				var base := current_item.substr("chopped_".length())
 				current_item = "cooked_%s" % base
-				print("[STATION] Cooked ->", current_item, "on", name)
+				emit_signal("item_changed", before, current_item)
 		"Serving":
-			# Accept the right final stage depending on recipe flow if we can read it from GM.
-			if _can_serve_current_item():
-				print("[STATION] Served:", current_item, "from", name)
+			# ✅ no 'break'—use early return if nothing on station
+			if current_item == "":
+				return
+
+			var req_stage := _required_stage_for_serving()
+			var base := current_item
+			if current_item.begins_with("chopped_"):
+				base = current_item.substr("chopped_".length())
+			elif current_item.begins_with("cooked_"):
+				base = current_item.substr("cooked_".length())
+
+			var ok := false
+			match req_stage:
+				"Chopping":
+					ok = current_item.begins_with("chopped_")
+				"Cooking":
+					ok = current_item.begins_with("cooked_")
+				"Ingredient":
+					ok = not current_item.begins_with("chopped_") and not current_item.begins_with("cooked_")
+				_:
+					ok = false
+
+			# Only add bases that are required and not duplicated
+			if ok and (_plate_need.is_empty() or _plate_need.has(base)) and not _plate_have.has(base):
+				_plate_have.append(base)
+				emit_signal("item_progress", base, _plate_have.duplicate(), _plate_need.duplicate())
+				current_item = ""  # consume placed item
+
+				if plate_is_complete():
+					emit_signal("item_served", "order:" + ",".join(_plate_have))
+					_plate_have.clear()
+			else:
+				# reject or stage-mismatch; optionally consume anyway:
 				current_item = ""
 		_:
-			print("[STATION] interact(): unknown station_type:", station_type)
+			pass
 
-	# update visuals if you implement it
 	if has_method("update_appearance"):
 		update_appearance()
+
 
 func take_item() -> String:
 	var tmp: String = current_item
