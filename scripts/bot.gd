@@ -13,8 +13,9 @@ enum Act {
 @export var accel := 800.0
 @export var stop_distance := 50.0
 @export var recipe_name: String = "demo_salad"
-@export var plan: Array[String] = ["lettuce", "tomato", "cucumber"]  # demo_salad default
-
+@export var plan: Array[String] = ["lettuce", "tomato", "cucumber","olive"]  # demo_salad default
+var _need_chop := false
+var _need_cook := false
 var _plan_i := 0
 
 # Remove the NodePath exports and replace with group-based station finding
@@ -124,27 +125,42 @@ func next(state: Dictionary, per: Dictionary) -> void:
 func action(state: Dictionary, per: Dictionary) -> Act:
 	match state.phase:
 		"to_ing":
-			if per.near_ing and state.carrying == "": return Act.TAKE_FROM_ING
+			if per.near_ing and state.carrying == "":
+				return Act.TAKE_FROM_ING
 			return Act.MOVE_TO_ING
 
 		"to_chop":
-			if per.near_chop and state.carrying != "" and not per.chop_has: return Act.PLACE_ON_CHOP
-			if per.near_chop and per.chop_has: return Act.CHOP
+			# Skip chopping entirely if not needed
+			if not _need_chop:
+				I.phase = "to_cook" if _need_cook else "to_serve"
+				return Act.MOVE_TO_COOK if _need_cook else Act.MOVE_TO_SERVE
+			# Chopping required → normal logic
+			if per.near_chop and state.carrying != "" and not per.chop_has:
+				return Act.PLACE_ON_CHOP
+			if per.near_chop and per.chop_has:
+				return Act.CHOP
 			return Act.MOVE_TO_CHOP
 
 		"to_cook":
-			if per.near_cook and state.carrying != "" and not per.cook_has: return Act.PLACE_ON_COOK
-			if per.near_cook and per.cook_has: return Act.COOK
+			# Skip cooking entirely if not needed
+			if not _need_cook:
+				I.phase = "to_serve"
+				return Act.MOVE_TO_SERVE
+			# Cooking required → normal logic
+			if per.near_cook and state.carrying != "" and not per.cook_has:
+				return Act.PLACE_ON_COOK
+			if per.near_cook and per.cook_has:
+				return Act.COOK
 			return Act.MOVE_TO_COOK
 
 		"to_serve":
 			if per.near_serve:
-				return Act.SERVE     # clear leftovers, then place+serve ours in SERVE action
+				return Act.SERVE   # robust SERVE will clear leftovers, then place+serve ours
 			return Act.MOVE_TO_SERVE
-
 
 		_:
 			return Act.NONE
+
 
 func act(a: Act, delta: float) -> void:
 	#print("[BOT DEBUG] Current action: ", a, " | Carrying: '", I.carrying, "' | Phase: ", I.phase)
@@ -168,12 +184,32 @@ func act(a: Act, delta: float) -> void:
 				print("[STATION] Ingredient spawned:", want, "on IngredientStation")
 
 			# Take it
-			_call_interact(st_ing) # safe no-op if not needed
+			_call_interact(st_ing)
 			var got := _take_item_from(st_ing)
 			if got != "":
 				I.carrying = got
 				print("[BOT] took:", I.carrying)
-				I.phase = "to_chop"
+
+				# --- NEW: read flow for this specific ingredient and set flags
+				var steps: Array = []
+				if _gm and _gm.has_method("get_flow_for_item"):
+					steps = _gm.get_flow_for_item(recipe_name, String(I.carrying))
+				elif _gm and _gm.has_method("get_recipe_flow"):
+					steps = _gm.get_recipe_flow(recipe_name)  # fallback to recipe-level flow
+				else:
+					# last-resort: sensible default salad flow
+					steps = ["Chopping","Serving"]
+
+				_need_chop = "Chopping" in steps
+				_need_cook = "Cooking" in steps
+
+				# Jump to the *first* required step
+				if _need_chop:
+					I.phase = "to_chop"
+				elif _need_cook:
+					I.phase = "to_cook"
+				else:
+					I.phase = "to_serve"
 			else:
 				print("[BOT ERROR] Failed to take item from ingredient station!")
 
@@ -186,13 +222,13 @@ func act(a: Act, delta: float) -> void:
 					print("[BOT] placed on chop:", I.carrying)
 					I.carrying = ""
 		Act.CHOP:
-			_call_interact(st_chop)  # "soup_ingredient" -> "chopped_soup_ingredient"
+			_call_interact(st_chop)
 			print("[BOT] chopped ->", _get_current_item(st_chop))
-			# pick it back up to carry to COOK
 			var taken := _take_item_from(st_chop)
 			if taken != "":
 				I.carrying = taken
-				I.phase = "to_cook"
+				I.phase = "to_cook" if _need_cook else "to_serve"
+
 
 		# COOK
 		Act.MOVE_TO_COOK:
@@ -231,6 +267,10 @@ func act(a: Act, delta: float) -> void:
 						I.phase = "done"
 					else:
 						I.phase = "to_ing"
+						# ... after you pop/advance to the next ingredient
+						_need_chop = false
+						_need_cook = false
+
 				else:
 					I.phase = "to_serve"
 				return

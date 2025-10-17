@@ -7,10 +7,25 @@ var stations_by_type: Dictionary = {}
 var current_recipe_id: String = "demo_salad"
 var _spawn_idx: int = 0
 
+# Default flow if nothing specified
 func get_recipe_flow(recipe_name: String) -> Array:
 	if recipes.has(recipe_name):
-		return recipes[recipe_name].get("flow", station_order.duplicate())
-	return station_order.duplicate()
+		return recipes[recipe_name].get("flow", ["Chopping", "Cooking", "Serving"])
+	return ["Chopping", "Cooking", "Serving"]
+
+# Optional per-ingredient override:
+# recipes["demo_salad"]["per_item_flow"] = {
+#   "olive": ["Chopping","Cooking","Serving"],  # cook olives
+#   "lettuce": ["Chopping","Serving"],          # no cooking
+# }
+func get_flow_for_item(recipe_name: String, item: String) -> Array:
+	var base := get_recipe_flow(recipe_name)
+	if recipes.has(recipe_name) and recipes[recipe_name].has("per_item_flow"):
+		var m: Dictionary = recipes[recipe_name]["per_item_flow"]
+		if m.has(item):
+			return m[item]
+	return base
+
 
 func get_recipe_ingredients(recipe_name: String) -> Array:
 	if recipes.has(recipe_name):
@@ -56,17 +71,17 @@ func _setup_demo_data() -> void:
 	ingredients["lettuce"]  = {"id":"lettuce",  "name":"lettuce",  "status":"raw"}
 	ingredients["tomato"]   = {"id":"tomato",   "name":"tomato",   "status":"raw"}
 	ingredients["cucumber"] = {"id":"cucumber", "name":"cucumber", "status":"raw"}
-	ingredients["mushroom"] = {"id":"mushroom", "name":"mushroom", "status":"raw"} # needed for demo_soup
+	
 
 	recipes = {
 		"demo_salad": {
-			"flow": ["Ingredient", "Chopping", "Serving"],
-			"base_items": ["lettuce", "tomato", "cucumber"]
-		},
-		"demo_soup": {
-			"flow": ["Ingredient", "Chopping", "Cooking", "Serving"],
-			"base_items": ["tomato", "mushroom"]
+		"base_items": ["lettuce","tomato","cucumber","olive"],
+		"flow": ["Chopping","Serving"],  # default = chop then serve
+		"per_item_flow": {
+			"olive": ["Chopping","Cooking","Serving"]  # olives require cooking
 		}
+	}
+		
 	}
 
 func process_recipe(recipe_name: String) -> void:
