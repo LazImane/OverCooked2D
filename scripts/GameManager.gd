@@ -35,13 +35,25 @@ func _setup_demo_data() -> void:
 	recipes = {
 		"demo_salad": {
 			"flow": ["Ingredient", "Chopping", "Serving"],
-			"base_items": ["tomato", "lettuce", "cucumber"]
+			"base_items": ["lettuce", "tomato", "cucumber"],
+			"required_bases": ["tomato", "lettuce", "cucumber"],
+			"final_stage": "Chopping"  # salad is done at chopped stage
 		},
 		"demo_soup": {
 			"flow": ["Ingredient", "Chopping", "Cooking", "Serving"],
-			"base_items": ["tomato", "mushroom"]
+			"base_items": ["tomato", "mushroom"],
+			"required_bases": ["tomato"],   # or ["tomato","mushroom"] if multi-ingredient soup
+			"final_stage": "Cooking"
 		}
 	}
+func recipe_required_bases(id: String) -> Array:
+	var rec: Dictionary = (recipes.get(id, Dictionary())) as Dictionary
+	return (rec.get("required_bases", Array())) as Array
+
+func recipe_final_stage(id: String) -> String:
+	var rec: Dictionary = (recipes.get(id, Dictionary())) as Dictionary
+	return String(rec.get("final_stage", "Chopping"))
+
 
 func process_recipe(recipe_name: String) -> void:
 	if not recipes.has(recipe_name):
