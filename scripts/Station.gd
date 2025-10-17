@@ -10,6 +10,7 @@ var current_item: String = ""  # e.g. "", "tomato", "chopped_tomato", "cooked_to
 # --- internals ---
 var _gm: Node = null
 var _local_spawn_idx := 0  # local round-robin if GM doesn't expose next_base_item()
+var items: Array = []
 
 func _ready() -> void:
 	add_to_group("stations")
@@ -55,6 +56,15 @@ func process(ingredient: Dictionary) -> String:
 	ingredient["status"] = new_status
 	emit_signal("station_processed", ingredient_name, new_status)
 	return new_status
+func spawn_specific(ing_id: String) -> void:
+	if station_type != "Ingredient":
+		return
+	if ing_id == "":
+		return
+	current_item = ing_id
+	print("[STATION] Ingredient spawned:", current_item, "on", station_type, "Station")
+	if has_method("update_appearance"):
+		update_appearance()
 
 # ------------------------
 # API used by Bot / player input
@@ -63,11 +73,6 @@ func interact() -> void:
 	match station_type:
 		"Ingredient":
 			if current_item == "":
-				# Ask GameManager for the next ingredient from the *active recipe*.
-				# Priority:
-				#   1) gm.next_base_item() if it exists
-				#   2) round-robin over gm.recipes[current_recipe_id or "demo_salad"].base_items
-				#   3) fallback to exported spawn_item_when_interacted
 				var spawn := _spawn_from_recipe_or_fallback()
 				if spawn != "":
 					current_item = spawn
@@ -75,42 +80,79 @@ func interact() -> void:
 				else:
 					print("[STATION] No base items available; using fallback:", spawn_item_when_interacted)
 					current_item = spawn_item_when_interacted
+
 		"Chopping":
 			if current_item != "" and not current_item.begins_with("chopped_") and not current_item.begins_with("cooked_"):
 				current_item = "chopped_%s" % current_item
 				print("[STATION] Chopped ->", current_item, "on", name)
+
 		"Cooking":
 			if current_item.begins_with("chopped_"):
 				var base := current_item.substr("chopped_".length())
 				current_item = "cooked_%s" % base
 				print("[STATION] Cooked ->", current_item, "on", name)
+
 		"Serving":
-			# Accept the right final stage depending on recipe flow if we can read it from GM.
+			# --- Batch-compatible Serving ---
+			# 1) If we have a queue, serve one from the queue (FIFO).
+			if items.size() > 0:
+				var it := String(items.pop_front())
+				print("[STATION] SERVED:", it, "on Serving (", items.size(), " remaining)")
+				if has_method("update_appearance"): update_appearance()
+				return
+
+			# 2) Fallback: single-slot behavior using current_item (your original logic).
 			if _can_serve_current_item():
 				print("[STATION] Served:", current_item, "from", name)
 				current_item = ""
+				if has_method("update_appearance"): update_appearance()
+
 		_:
 			print("[STATION] interact(): unknown station_type:", station_type)
+			
+func serve_all() -> void:
+	if station_type != "Serving": return
+	while items.size() > 0:
+		var it := String(items.pop_front())
+		print("[STATION] SERVED:", it, "on Serving (batch)")
+	if current_item != "":
+		print("[STATION] SERVED:", current_item, "on Serving (single-slot)")
+		current_item = ""
+	if has_method("update_appearance"): update_appearance()
 
 	# update visuals if you implement it
 	if has_method("update_appearance"):
 		update_appearance()
 
 func take_item() -> String:
-	var tmp: String = current_item
-	if tmp != "":
-		current_item = ""
-		if has_method("update_appearance"):
-			update_appearance()
-		print("[STATION] take_item() ->", tmp, "from", name)
-	return tmp
+	if station_type == "Serving":
+		# For batch mode we usually won't "take" from Serving;
+		# implement FIFO in case something else uses it.
+		if items.size() == 0:
+			return ""
+		return String(items.pop_front())
+	# default for others:
+	if current_item == "":
+		return ""
+	var out := current_item
+	current_item = ""
+	update_appearance()
+	print("[STATION] take_item() ->%sfrom%sStation" % [out, station_type])
+	return out
 
 func place_item(it: String) -> bool:
+	if station_type == "Serving":
+		if it == null or it == "":
+			return false
+		items.append(it)
+		print("[STATION] queued on Serving:", it, " (", items.size(), " total)")
+		update_appearance()
+		return true
+	# default behavior for other stations (existing logic)
 	if current_item == "":
 		current_item = it
-		if has_method("update_appearance"):
-			update_appearance()
-		print("[STATION] place_item(", it, ") on", name)
+		update_appearance()
+		print("[STATION] place_item(%s) on%s" % [it, station_type])
 		return true
 	return false
 

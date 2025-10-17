@@ -4,6 +4,32 @@ var station_order: Array = ["Ingredient", "Chopping", "Cooking", "Serving"] # op
 var ingredients: Dictionary = {}
 var recipes: Dictionary = {}
 var stations_by_type: Dictionary = {}
+var current_recipe_id: String = "demo_salad"
+var _spawn_idx: int = 0
+
+func get_recipe_flow(recipe_name: String) -> Array:
+	if recipes.has(recipe_name):
+		return recipes[recipe_name].get("flow", station_order.duplicate())
+	return station_order.duplicate()
+
+func get_recipe_ingredients(recipe_name: String) -> Array:
+	if recipes.has(recipe_name):
+		# use "base_items" or "ingredients" depending on your data
+		return recipes[recipe_name].get("base_items", [])
+	return []
+
+
+func next_base_item() -> String:
+	var rid := current_recipe_id if current_recipe_id != "" else "demo_salad"
+	if not recipes.has(rid):
+		return ""
+	var items: Array = recipes[rid].get("base_items", [])
+	if items.is_empty():
+		return ""
+	var id := String(items[_spawn_idx % items.size()])
+	_spawn_idx += 1
+	return id
+
 
 func _ready() -> void:
 	add_to_group("game_manager")
