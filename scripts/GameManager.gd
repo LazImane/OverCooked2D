@@ -20,8 +20,8 @@ func _register_stations() -> void:
 	print("Registered stations:", stations_by_type.keys())
 
 func _setup_demo_data() -> void:
-	ingredients["soup_ingredient"] = {"name":"soup_ingredient", "status":"raw"}
-	recipes["soup"] = ["soup_ingredient"]
+	ingredients["tomato"] = {"name":"tomato", "status":"raw"}
+	recipes["tomato_soup"] = ["tomato"]
 	
 func get_ingredient_status(ing_id: String) -> String:
 	if ingredients.has(ing_id):

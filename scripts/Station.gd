@@ -5,8 +5,7 @@ signal station_processed(ingredient_name: String, new_status: String)
 
 # used by the bot
 var current_item: String = ""# stores what's on the station (e.g. "", "soup_ingredient", "chopped_soup_ingredient", ...)
-# optional: how the station should behave as a "spawner" for GameManager flow
-@export var spawn_item_when_interacted: String = "soup_ingredient"
+@export var spawn_item_when_interacted: String = "tomato"
 
 func _ready() -> void:
 	add_to_group("stations")
@@ -54,7 +53,7 @@ func process(ingredient: Dictionary) -> String:
 # ------------------------
 # Called when the bot presses/interacts with this station.
 func interact() -> void:
-	print("[STATION DEBUG] ", name, " interact called. station_type: ", station_type, " current_item: '", current_item, "'")
+	#print("[STATION DEBUG] ", name, " interact called. station_type: ", station_type, " current_item: '", current_item, "'")
 	
 	match station_type:
 		"Ingredient":
@@ -71,16 +70,15 @@ func interact() -> void:
 				current_item = spawn_item_when_interacted
 				print("[STATION] Ingredient spawned:", current_item, "on", name)
 		"Chopping":
-			if current_item == "soup_ingredient":
-				current_item = "chopped_soup_ingredient"
+			if current_item == "tomato":
+				current_item = "chopped_tomato"
 				print("[STATION] Chopped ->", current_item, "on", name)
 		"Cooking":
-			if current_item == "chopped_soup_ingredient":
-				current_item = "cooked_soup_ingredient"
+			if current_item == "chopped_tomato":
+				current_item = "cooked_tomato"
 				print("[STATION] Cooked ->", current_item, "on", name)
 		"Serving":
-			if current_item == "cooked_soup_ingredient":
-				# serve (consume)
+			if current_item == "cooked_tomato":
 				print("[STATION] Served:", current_item, "from", name)
 				current_item = ""
 		_:

@@ -11,7 +11,7 @@ enum Act {
 
 @export var speed := 70.0
 @export var accel := 800.0
-@export var stop_distance := 130.0
+@export var stop_distance := 90.0
 
 # Remove the NodePath exports and replace with group-based station finding
 var st_ing: Node
@@ -60,7 +60,7 @@ func find_stations_by_type() -> void:
 
 func _physics_process(delta: float) -> void:
 	var per := see()
-	print("[QUICK DEBUG] Distance to ing: ", global_position.distance_to(st_ing.global_position), " | Stop dist: ", stop_distance)
+	#print("[QUICK DEBUG] Distance to ing: ", global_position.distance_to(st_ing.global_position), " | Stop dist: ", stop_distance)
 	next(I, per)
 	var a: Act = action(I, per)
 	act(a, delta)
@@ -125,18 +125,18 @@ func action(state: Dictionary, per: Dictionary) -> Act:
 			return Act.NONE
 
 func act(a: Act, delta: float) -> void:
-	print("[BOT DEBUG] Current action: ", a, " | Carrying: '", I.carrying, "' | Phase: ", I.phase)
+	#print("[BOT DEBUG] Current action: ", a, " | Carrying: '", I.carrying, "' | Phase: ", I.phase)
 	
 	match a:
 		# INGREDIENTS
 		Act.MOVE_TO_ING:
 			_seek(I.target, delta)
 		Act.TAKE_FROM_ING:
-			print("[BOT DEBUG] Attempting to take from ingredient station")
+			#print("[BOT DEBUG] Attempting to take from ingredient station")
 			_call_interact(st_ing) # spawns soup_ingredient if empty
-			print("[BOT DEBUG] After interact - station current_item: '", _get_current_item(st_ing), "'")
+			#print("[BOT DEBUG] After interact - station current_item: '", _get_current_item(st_ing), "'")
 			var got := _take_item_from(st_ing)
-			print("[BOT DEBUG] Took item: '", got, "'")
+			#print("[BOT DEBUG] Took item: '", got, "'")
 			if got != "":
 				I.carrying = got
 				print("[BOT] took:", I.carrying)
