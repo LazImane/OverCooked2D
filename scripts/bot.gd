@@ -13,7 +13,7 @@ enum Act {
 @export var accel := 800.0
 @export var stop_distance := 50.0
 
-# Remove the NodePath exports and replace with group-based station finding
+# Found via group instead of exported NodePaths
 var st_ing: Node
 var st_chop: Node
 var st_cook: Node
@@ -21,25 +21,20 @@ var st_serve: Node
 
 var I := {
 	"target": Vector2.ZERO,
-	"carrying": "",     # "", "soup_ingredient", "chopped_soup_ingredient", "cooked_soup_ingredient"
+	"carrying": "",     # "", "base", "chopped_base", "cooked_base"
 	"phase": "to_ing"   # to_ing -> to_chop -> to_cook -> to_serve -> done
 }
 
-@onready var sprite = $Sprite2D  # Add this for sprite flipping
+@onready var sprite = $Sprite2D
 @onready var navigation_agent = $NavigationAgent2D
 
 func _ready() -> void:
-	# Find stations by type instead of by path
 	find_stations_by_type()
-	
 	if not st_ing or not st_chop or not st_cook or not st_serve:
-		push_error("Bot: could not find all 4 station types (ingredients/chop/cook/serve).")
 		set_physics_process(false)
 		return
-	
 	I.target = st_ing.global_position
 	velocity = Vector2.ZERO
-	print("[BOT] ready. phase=", I.phase)
 	navigation_agent.target_desired_distance = stop_distance
 	navigation_agent.path_desired_distance = stop_distance
 
@@ -55,20 +50,17 @@ func find_stations_by_type() -> void:
 				st_cook = station
 			"Serving":
 				st_serve = station
-	
-	print("[BOT] Found stations - Ing: ", st_ing != null, ", Chop: ", st_chop != null, ", Cook: ", st_cook != null, ", Serve: ", st_serve != null)
 
 func _physics_process(delta: float) -> void:
 	var per := see()
-	#print("[QUICK DEBUG] Distance to ing: ", global_position.distance_to(st_ing.global_position), " | Stop dist: ", stop_distance)
 	next(I, per)
 	var a: Act = action(I, per)
 	act(a, delta)
-	
-	# Add sprite flipping based on movement direction
+
+	# Sprite flip by movement dir
 	if sprite and velocity.x != 0:
 		sprite.flip_h = velocity.x < 0
-	
+
 	move_and_slide()
 
 # ---------- AGENT PARTS ----------
@@ -125,24 +117,16 @@ func action(state: Dictionary, per: Dictionary) -> Act:
 			return Act.NONE
 
 func act(a: Act, delta: float) -> void:
-	#print("[BOT DEBUG] Current action: ", a, " | Carrying: '", I.carrying, "' | Phase: ", I.phase)
-	
 	match a:
 		# INGREDIENTS
 		Act.MOVE_TO_ING:
 			_seek(I.target, delta)
 		Act.TAKE_FROM_ING:
-			#print("[BOT DEBUG] Attempting to take from ingredient station")
-			_call_interact(st_ing) # spawns soup_ingredient if empty
-			#print("[BOT DEBUG] After interact - station current_item: '", _get_current_item(st_ing), "'")
+			_call_interact(st_ing) # spawns base if empty
 			var got := _take_item_from(st_ing)
-			#print("[BOT DEBUG] Took item: '", got, "'")
 			if got != "":
 				I.carrying = got
-				print("[BOT] took:", I.carrying)
 				I.phase = "to_chop"
-			else:
-				print("[BOT ERROR] Failed to take item from ingredient station!")
 
 		# CHOP
 		Act.MOVE_TO_CHOP:
@@ -150,12 +134,9 @@ func act(a: Act, delta: float) -> void:
 		Act.PLACE_ON_CHOP:
 			if I.carrying != "":
 				if _place_item_on(st_chop, I.carrying):
-					print("[BOT] placed on chop:", I.carrying)
 					I.carrying = ""
 		Act.CHOP:
-			_call_interact(st_chop)  # "soup_ingredient" -> "chopped_soup_ingredient"
-			print("[BOT] chopped ->", _get_current_item(st_chop))
-			# pick it back up to carry to COOK
+			_call_interact(st_chop)  # base -> chopped_base
 			var taken := _take_item_from(st_chop)
 			if taken != "":
 				I.carrying = taken
@@ -167,12 +148,9 @@ func act(a: Act, delta: float) -> void:
 		Act.PLACE_ON_COOK:
 			if I.carrying != "":
 				if _place_item_on(st_cook, I.carrying):
-					print("[BOT] placed on cook:", I.carrying)
 					I.carrying = ""
 		Act.COOK:
-			_call_interact(st_cook)  # "chopped_soup_ingredient" -> "cooked_soup_ingredient"
-			print("[BOT] cooked ->", _get_current_item(st_cook))
-			# pick it back up to carry to SERVE
+			_call_interact(st_cook)  # chopped_base -> cooked_base
 			var taken2 := _take_item_from(st_cook)
 			if taken2 != "":
 				I.carrying = taken2
@@ -184,15 +162,14 @@ func act(a: Act, delta: float) -> void:
 		Act.PLACE_ON_SERVE:
 			if I.carrying != "":
 				if _place_item_on(st_serve, I.carrying):
-					print("[BOT] placed on serve:", I.carrying)
 					I.carrying = ""
 		Act.SERVE:
-			_call_interact(st_serve) # consumes cooked_soup_ingredient
-			print("[BOT] served. done ✅")
+			_call_interact(st_serve) # consumes final
 			I.phase = "done"
 
 		Act.NONE:
 			velocity = velocity.move_toward(Vector2.ZERO, accel * delta)
+
 # ---------- movement ----------
 func _seek(target: Vector2, delta: float) -> void:
 	var to_target: Vector2 = target - global_position
@@ -204,29 +181,36 @@ func _seek(target: Vector2, delta: float) -> void:
 
 # ---------- station helpers ----------
 func _call_interact(s: Node) -> void:
-	if s and s.has_method("interact"): s.interact()
+	if s and s.has_method("interact"):
+		s.interact()
 
 func _station_has_item(s: Node) -> bool:
-	if "current_item" in s: return s.current_item != ""
+	if "current_item" in s:
+		return s.current_item != ""
 	return false
 
 func _get_current_item(s: Node) -> String:
-	if "current_item" in s: return String(s.current_item)
+	if "current_item" in s:
+		return String(s.current_item)
 	return ""
 
 func _set_current_item(s: Node, v: String) -> void:
 	if "current_item" in s:
 		s.current_item = v
-		if s.has_method("update_appearance"): s.update_appearance()
+		if s.has_method("update_appearance"):
+			s.update_appearance()
 
 func _take_item_from(s: Node) -> String:
-	if s and s.has_method("take_item"): return String(s.take_item())
+	if s and s.has_method("take_item"):
+		return String(s.take_item())
 	var cur := _get_current_item(s)
-	if cur != "": _set_current_item(s, "")
+	if cur != "":
+		_set_current_item(s, "")
 	return cur
 
 func _place_item_on(s: Node, it: String) -> bool:
-	if s and s.has_method("place_item"): return bool(s.place_item(it))
+	if s and s.has_method("place_item"):
+		return bool(s.place_item(it))
 	if _get_current_item(s) == "":
 		_set_current_item(s, it)
 		return true
