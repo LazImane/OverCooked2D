@@ -11,7 +11,7 @@ enum Act {
 
 @export var speed := 70.0
 @export var accel := 800.0
-@export var stop_distance := 90.0
+@export var stop_distance := 50.0
 
 # Remove the NodePath exports and replace with group-based station finding
 var st_ing: Node
