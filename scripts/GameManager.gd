@@ -5,6 +5,9 @@ var ingredients: Dictionary = {}
 var recipes: Dictionary = {}
 var stations_by_type: Dictionary = {}
 
+#coté visuals getiing the ingredients scene
+@export var ingredient_scene: PackedScene = null  # assign res://scenes/Ingredient.tscn in the editor
+
 func _ready() -> void:
 	add_to_group("game_manager")
 	_register_stations()
@@ -110,3 +113,24 @@ func get_ingredient_status(ing_id: String) -> String:
 		return String(ingredients[ing_id].get("status", ""))
 	print("Ingredient:", ing_id, "does not exist")
 	return ""
+	
+###############VISUALS  : ADDING INGREDIENT####################
+var count := 0 
+func spawn_ingredient(type: String = "", parent_opt: Node = null) -> Node:
+	var game_root: Node = parent_opt if parent_opt != null else get_parent()
+	if ingredient_scene == null:
+		push_error("spawn_ingredient: ingredient_scene not assigned in the inspector.")
+		return null
+
+	var inst: Node = ingredient_scene.instantiate()
+	game_root.add_child(inst)
+
+	if type != "" and inst.has_method("set_type"):
+		inst.set_type(type)
+	elif inst.has_method("spawn_from_recipe"):
+		inst.spawn_from_recipe()
+
+	inst.name = "%s_%d" % [inst.name if inst.name != "" else "Ingredient", count]
+	count += 1
+
+	return inst
