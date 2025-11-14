@@ -13,21 +13,23 @@ enum Act {
 @export var accel := 800.0
 @export var stop_distance := 50.0
 @export var recipe_name: String = "demo_salad"
-@export var plan: Array[String] = ["lettuce", "tomato", "cucumber","olive"]  # demo_salad default
+
 var _need_chop := false
 var _need_cook := false
-var _plan_i := 0
+
 
 # Remove the NodePath exports and replace with group-based station finding
 var st_ing: Node
 var st_chop: Node
 var st_cook: Node
 var st_serve: Node
-@export var batch_serve := true   # << turn batching on/off
+
 
 var _gm: Node = null
-var _pending: Array = []          # filled from GameManager
-var _finishing_batch := false     # after last drop, go serve all
+  
+
+
+var current_base: String = ""   # which ingredient this bot is currently working on
 
 
 var I := {
@@ -47,21 +49,15 @@ func _ready() -> void:
 		push_error("Bot: could not find all 4 station types (ingredients/chop/cook/serve).")
 		set_physics_process(false)
 		return
-	
-	# --- NEW: load recipe queue from GameManager ---
-	_gm = get_tree().get_first_node_in_group("game_manager")   # make sure your GameManager node has this group
-	if _gm and _gm.has_method("get_recipe_ingredients"):
-		_pending = _gm.get_recipe_ingredients(recipe_name).duplicate()
-	# Fallback if getter missing/empty
-	if _pending.is_empty():
-		_pending = ["lettuce", "tomato", "cucumber"]
-	# ----------------------------------------------
-	print("[BOT", bot_id, "] ready. phase=", I.phase, " pending=", _pending)
+	_gm = get_tree().get_first_node_in_group("game_manager")
+	print("[BOT", bot_id, "] ready. phase=", I.phase)
 
+	
+	
 
 	I.target = st_ing.global_position
 	velocity = Vector2.ZERO
-	print("[BOT", bot_id, "] ready. phase=", I.phase, " pending=", _pending)
+	
 
 	navigation_agent.target_desired_distance = stop_distance
 	navigation_agent.path_desired_distance = stop_distance
@@ -165,19 +161,26 @@ func action(state: Dictionary, per: Dictionary) -> Act:
 
 
 func act(a: Act, delta: float) -> void:
-	#print("[BOT DEBUG] Current action: ", a, " | Carrying: '", I.carrying, "' | Phase: ", I.phase)
-	
 	match a:
 		# INGREDIENTS
 		Act.MOVE_TO_ING:
 			_seek(I.target, delta)
-		Act.TAKE_FROM_ING:
-			if _plan_i >= plan.size():
-				print("[BOT", bot_id, "] plan complete; nothing to take")
-				I.phase = "done"
-				return
 
-			var want := String(plan[_plan_i])
+		Act.TAKE_FROM_ING:
+			# If we don't yet have an assigned ingredient, ask GameManager
+			if current_base == "":
+				if _gm == null:
+					_gm = get_tree().get_first_node_in_group("game_manager")
+				if _gm and _gm.has_method("request_next_ingredient"):
+					current_base = String(_gm.request_next_ingredient(bot_id))
+
+				# GM has no more ingredients → this bot is done
+				if current_base == "":
+					print("[BOT", bot_id, "] no more ingredients from GM; done.")
+					I.phase = "done"
+					return
+
+			var want := current_base
 
 			# Ensure Ingredient holds the wanted base (force if empty or wrong)
 			var cur := _get_current_item(st_ing)
@@ -192,15 +195,14 @@ func act(a: Act, delta: float) -> void:
 				I.carrying = got
 				print("[BOT", bot_id, "] took:", I.carrying)
 
-				# --- NEW: read flow for this specific ingredient and set flags
+				# --- read flow for THIS ingredient and set flags
 				var steps: Array = []
 				if _gm and _gm.has_method("get_flow_for_item"):
-					steps = _gm.get_flow_for_item(recipe_name, String(I.carrying))
+					steps = _gm.get_flow_for_item(recipe_name, current_base)
 				elif _gm and _gm.has_method("get_recipe_flow"):
 					steps = _gm.get_recipe_flow(recipe_name)  # fallback to recipe-level flow
 				else:
-					# last-resort: sensible default salad flow
-					steps = ["Chopping","Serving"]
+					steps = ["Chopping","Serving"]  # safe default
 
 				_need_chop = "Chopping" in steps
 				_need_cook = "Cooking" in steps
@@ -218,11 +220,13 @@ func act(a: Act, delta: float) -> void:
 		# CHOP
 		Act.MOVE_TO_CHOP:
 			_seek(I.target, delta)
+
 		Act.PLACE_ON_CHOP:
 			if I.carrying != "":
 				if _place_item_on(st_chop, I.carrying):
 					print("[BOT", bot_id, "] placed on chop:", I.carrying)
 					I.carrying = ""
+
 		Act.CHOP:
 			_call_interact(st_chop)
 			print("[BOT", bot_id, "] chopped ->", _get_current_item(st_chop))
@@ -231,19 +235,19 @@ func act(a: Act, delta: float) -> void:
 				I.carrying = taken
 				I.phase = "to_cook" if _need_cook else "to_serve"
 
-
 		# COOK
 		Act.MOVE_TO_COOK:
 			_seek(I.target, delta)
+
 		Act.PLACE_ON_COOK:
 			if I.carrying != "":
 				if _place_item_on(st_cook, I.carrying):
 					print("[BOT", bot_id, "] placed on cook:", I.carrying)
 					I.carrying = ""
+
 		Act.COOK:
-			_call_interact(st_cook)  # "chopped_soup_ingredient" -> "cooked_soup_ingredient"
+			_call_interact(st_cook)
 			print("[BOT", bot_id, "] cooked ->", _get_current_item(st_cook))
-			# pick it back up to carry to SERVE
 			var taken2 := _take_item_from(st_cook)
 			if taken2 != "":
 				I.carrying = taken2
@@ -252,60 +256,44 @@ func act(a: Act, delta: float) -> void:
 		# SERVE
 		Act.MOVE_TO_SERVE:
 			_seek(I.target, delta)
+
 		Act.PLACE_ON_SERVE:
+			# (you can leave this unused or remove it; SERVE below already does place+serve)
 			if I.carrying != "":
 				if _place_item_on(st_serve, I.carrying):
 					print("[BOT", bot_id, "] placed on serve:", I.carrying)
 					I.carrying = ""
+
 		Act.SERVE:
-			# 1) If Serving already has an item (leftover), serve it first.
-			if _station_has_item(st_serve):
-				_call_interact(st_serve)  # consumes what's on Serving
-				# After clearing, come back to SERVE in the next frame to place ours (if any)
-				if I.carrying == "":
-					# nothing to place: if plan done, finish; else go fetch next
-					if _plan_i >= plan.size():
-						print("[BOT", bot_id, "] all items served. done ✅")
-						I.phase = "done"
-					else:
-						I.phase = "to_ing"
-						# ... after you pop/advance to the next ingredient
-						_need_chop = false
-						_need_cook = false
-
-				else:
-					I.phase = "to_serve"
-				return
-
-			# 2) Serving is empty now. If we're carrying our cooked item, place & serve it.
+			# If we are carrying something, drop it on Serving and let the station serve it.
 			if I.carrying != "":
 				if _place_item_on(st_serve, I.carrying):
 					print("[BOT", bot_id, "] placed on serve:", I.carrying)
 					I.carrying = ""
-					_call_interact(st_serve)  # serve the placed dish
+					_call_interact(st_serve)  # ServingStation will serve from its queue
 
-					# Advance plan and loop or finish
-					_plan_i += 1
-					if _plan_i < plan.size():
-						print("[BOT", bot_id, "] served one. remaining:", plan.size() - _plan_i)
-						I.phase = "to_ing"
-					else:
-						print("[BOT", bot_id, "] all items served. done ✅")
-						I.phase = "done"
-				else:
-					# Couldn't place (shouldn't happen since it's empty), try again
-					I.phase = "to_serve"
+			# This ingredient is finished
+			current_base = ""
+			_need_chop = false
+			_need_cook = false
+
+			# Ask GM for next ingredient
+			if _gm == null:
+				_gm = get_tree().get_first_node_in_group("game_manager")
+			if _gm and _gm.has_method("request_next_ingredient"):
+				current_base = String(_gm.request_next_ingredient(bot_id))
+
+			if current_base == "":
+				print("[BOT", bot_id, "] no more tasks from GM; idling.")
+
+				I.phase = "done"
 			else:
-				# Nothing to serve and not carrying. Either done or go fetch next.
-				if _plan_i >= plan.size():
-					print("[BOT", bot_id, "] all items served. done ✅")
-					I.phase = "done"
-				else:
-					I.phase = "to_ing"
-
+				print("[BOT", bot_id, "] new ingredient from GM:", current_base)
+				I.phase = "to_ing"
 
 		Act.NONE:
 			velocity = velocity.move_toward(Vector2.ZERO, accel * delta)
+
 # ---------- movement ----------
 func _seek(target: Vector2, delta: float) -> void:
 	var to_target: Vector2 = target - global_position

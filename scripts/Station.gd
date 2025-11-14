@@ -98,14 +98,18 @@ func interact() -> void:
 			if items.size() > 0:
 				var it := String(items.pop_front())
 				print("[STATION] SERVED:", it, "on Serving (", items.size(), " remaining)")
+				_notify_gm_served(it)
 				if has_method("update_appearance"): update_appearance()
 				return
+
 
 			# 2) Fallback: single-slot behavior using current_item (your original logic).
 			if _can_serve_current_item():
 				print("[STATION] Served:", current_item, "from", name)
+				_notify_gm_served(current_item)
 				current_item = ""
 				if has_method("update_appearance"): update_appearance()
+
 
 		_:
 			print("[STATION] interact(): unknown station_type:", station_type)
@@ -271,3 +275,9 @@ func _can_serve_current_item() -> bool:
 			# If we can't read recipe flow, accept cooked first, then chopped.
 			return current_item.begins_with("cooked_") or current_item.begins_with("chopped_")
 	return false
+	
+func _notify_gm_served(it: String) -> void:
+	if _gm == null:
+		_gm = get_tree().get_first_node_in_group("game_manager")
+	if _gm and _gm.has_method("notify_served"):
+		_gm.notify_served(it)

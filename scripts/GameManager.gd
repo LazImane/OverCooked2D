@@ -7,6 +7,10 @@ var stations_by_type: Dictionary = {}
 var current_recipe_id: String = "demo_salad"
 var _spawn_idx: int = 0
 
+var _order_bases: Array = []
+var _total_needed: int = 0
+var _served_count: int = 0
+
 # Default flow if nothing specified
 func get_recipe_flow(recipe_name: String) -> Array:
 	if recipes.has(recipe_name):
@@ -50,7 +54,7 @@ func _ready() -> void:
 	add_to_group("game_manager")
 	_register_stations()
 	_setup_demo_data()
-	process_recipe("demo_salad")
+	#process_recipe("demo_salad")
 
 func _register_stations() -> void:
 	stations_by_type.clear()
@@ -83,7 +87,12 @@ func _setup_demo_data() -> void:
 	}
 		
 	}
-
+	_order_bases.clear()
+	if recipes.has(current_recipe_id):
+		_order_bases = recipes[current_recipe_id].get("base_items", []).duplicate()
+	_total_needed = _order_bases.size()
+	_served_count = 0
+	
 func process_recipe(recipe_name: String) -> void:
 	if not recipes.has(recipe_name):
 		print("Recipe not found:", recipe_name)
@@ -151,3 +160,21 @@ func get_ingredient_status(ing_id: String) -> String:
 		return String(ingredients[ing_id].get("status", ""))
 	print("Ingredient:", ing_id, "does not exist")
 	return ""
+	
+func notify_served(ing_id: String) -> void:
+	_served_count += 1
+	print("[GM] served", ing_id, "(", _served_count, "/", _total_needed, ")")
+
+	if _served_count >= _total_needed and _total_needed > 0:
+		print("[GM] Recipe", current_recipe_id, "COMPLETED 🎉")
+
+	
+func request_next_ingredient(bot_id: int) -> String:
+	# Called by bots when they are ready for a new ingredient.
+	if _order_bases.is_empty():
+		print("[GM] No more ingredients to assign for", current_recipe_id)
+		return ""
+
+	var base := String(_order_bases.pop_front())
+	print("[GM] Assigned ingredient", base, "to bot", bot_id)
+	return base
