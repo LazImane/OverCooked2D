@@ -1,4 +1,4 @@
-[gd_scene load_steps=23 format=3 uid="uid://cqet8q2suopqs"]
+[gd_scene load_steps=21 format=3 uid="uid://dtnsv846n4c5a"]
 
 [ext_resource type="Texture2D" uid="uid://dpa6d8byrp3t7" path="res://assets/pixelinterior_LRK/floorswalls_LRK.png" id="1_e2o6t"]
 [ext_resource type="Texture2D" uid="uid://ddldpwcweumie" path="res://assets/pixelinterior_LRK/kitchen_LRK.png" id="2_feb5d"]
@@ -7,9 +7,8 @@
 [ext_resource type="Texture2D" uid="uid://cefmeneue6dsj" path="res://assets/pixelinterior_LRK/cabinets_LRK.png" id="4_hve3p"]
 [ext_resource type="Script" uid="uid://cvml5oqa28lqg" path="res://scripts/GameManager.gd" id="5_7jktm"]
 [ext_resource type="Texture2D" uid="uid://c1cqwkvp1h7nr" path="res://assets/pixelinterior_LRK/decorations_LRK.png" id="5_mfdv2"]
-[ext_resource type="Script" uid="uid://bs5763pl5cogu" path="res://scripts/bot.gd" id="6_eow3j"]
 [ext_resource type="Texture2D" uid="uid://clei5l3l6u4ll" path="res://assets/pixelinterior_LRK/livingroom_LRK.png" id="6_iotsf"]
-[ext_resource type="Texture2D" uid="uid://dwgs04fxuldbi" path="res://assets/food and kitchenware icons/chef.png" id="6_ryrav"]
+[ext_resource type="PackedScene" uid="uid://50yjn5g4ieng" path="res://bot.tscn" id="9_vef74"]
 
 [sub_resource type="TileSetAtlasSource" id="TileSetAtlasSource_fc0e3"]
 texture = ExtResource("1_e2o6t")
@@ -36734,11 +36733,8 @@ size = Vector2(32, 52)
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_7jktm"]
 size = Vector2(40, 98.5)
 
-[sub_resource type="CapsuleShape2D" id="CapsuleShape2D_eow3j"]
-radius = 11.0
-height = 44.0
-
 [node name="Game" type="Node2D"]
+position = Vector2(1, 1)
 
 [node name="TileMap" type="TileMap" parent="."]
 position = Vector2(0, -1)
@@ -36784,20 +36780,15 @@ shape = SubResource("RectangleShape2D_7jktm")
 [node name="GameManager" type="Node" parent="."]
 script = ExtResource("5_7jktm")
 
-[node name="Bot" type="CharacterBody2D" parent="."]
-position = Vector2(121, 90)
-script = ExtResource("6_eow3j")
-
-[node name="CollisionShape2D" type="CollisionShape2D" parent="Bot"]
-position = Vector2(2, -2)
-shape = SubResource("CapsuleShape2D_eow3j")
-
-[node name="Sprite2D" type="Sprite2D" parent="Bot"]
-position = Vector2(2, -2)
-scale = Vector2(0.13000007, 0.096)
-texture = ExtResource("6_ryrav")
-
-[node name="NavigationAgent2D" type="NavigationAgent2D" parent="Bot"]
+[node name="Bot" parent="." instance=ExtResource("9_vef74")]
+position = Vector2(-140, 85)
+collision_layer = 2
+plan = Array[String](["lettuce", "tomato"])
 
 [node name="Camera2D" type="Camera2D" parent="."]
 zoom = Vector2(2.3, 2.3)
+
+[node name="Bot2" parent="." instance=ExtResource("9_vef74")]
+collision_layer = 2
+bot_id = 2
+plan = Array[String](["cucumber", "olive"])

@@ -8,7 +8,7 @@ enum Act {
 	MOVE_TO_SERVE, PLACE_ON_SERVE, SERVE,
 	NONE
 }
-
+@export var bot_id := 1
 @export var speed := 70.0
 @export var accel := 800.0
 @export var stop_distance := 50.0
@@ -56,11 +56,13 @@ func _ready() -> void:
 	if _pending.is_empty():
 		_pending = ["lettuce", "tomato", "cucumber"]
 	# ----------------------------------------------
-	print("[BOT] ready. phase=", I.phase, " plan=", plan)
+	print("[BOT", bot_id, "] ready. phase=", I.phase, " pending=", _pending)
+
 
 	I.target = st_ing.global_position
 	velocity = Vector2.ZERO
-	print("[BOT] ready. phase=", I.phase, " pending=", _pending)
+	print("[BOT", bot_id, "] ready. phase=", I.phase, " pending=", _pending)
+
 	navigation_agent.target_desired_distance = stop_distance
 	navigation_agent.path_desired_distance = stop_distance
 
@@ -78,7 +80,7 @@ func find_stations_by_type() -> void:
 			"Serving":
 				st_serve = station
 	
-	print("[BOT] Found stations - Ing: ", st_ing != null, ", Chop: ", st_chop != null, ", Cook: ", st_cook != null, ", Serve: ", st_serve != null)
+	print("[BOT", bot_id, "] Found stations - Ing: ", st_ing != null, ", Chop: ", st_chop != null, ", Cook: ", st_cook != null, ", Serve: ", st_serve != null)
 
 func _physics_process(delta: float) -> void:
 	var per := see()
@@ -171,7 +173,7 @@ func act(a: Act, delta: float) -> void:
 			_seek(I.target, delta)
 		Act.TAKE_FROM_ING:
 			if _plan_i >= plan.size():
-				print("[BOT] plan complete; nothing to take")
+				print("[BOT", bot_id, "] plan complete; nothing to take")
 				I.phase = "done"
 				return
 
@@ -188,7 +190,7 @@ func act(a: Act, delta: float) -> void:
 			var got := _take_item_from(st_ing)
 			if got != "":
 				I.carrying = got
-				print("[BOT] took:", I.carrying)
+				print("[BOT", bot_id, "] took:", I.carrying)
 
 				# --- NEW: read flow for this specific ingredient and set flags
 				var steps: Array = []
@@ -219,11 +221,11 @@ func act(a: Act, delta: float) -> void:
 		Act.PLACE_ON_CHOP:
 			if I.carrying != "":
 				if _place_item_on(st_chop, I.carrying):
-					print("[BOT] placed on chop:", I.carrying)
+					print("[BOT", bot_id, "] placed on chop:", I.carrying)
 					I.carrying = ""
 		Act.CHOP:
 			_call_interact(st_chop)
-			print("[BOT] chopped ->", _get_current_item(st_chop))
+			print("[BOT", bot_id, "] chopped ->", _get_current_item(st_chop))
 			var taken := _take_item_from(st_chop)
 			if taken != "":
 				I.carrying = taken
@@ -236,11 +238,11 @@ func act(a: Act, delta: float) -> void:
 		Act.PLACE_ON_COOK:
 			if I.carrying != "":
 				if _place_item_on(st_cook, I.carrying):
-					print("[BOT] placed on cook:", I.carrying)
+					print("[BOT", bot_id, "] placed on cook:", I.carrying)
 					I.carrying = ""
 		Act.COOK:
 			_call_interact(st_cook)  # "chopped_soup_ingredient" -> "cooked_soup_ingredient"
-			print("[BOT] cooked ->", _get_current_item(st_cook))
+			print("[BOT", bot_id, "] cooked ->", _get_current_item(st_cook))
 			# pick it back up to carry to SERVE
 			var taken2 := _take_item_from(st_cook)
 			if taken2 != "":
@@ -253,7 +255,7 @@ func act(a: Act, delta: float) -> void:
 		Act.PLACE_ON_SERVE:
 			if I.carrying != "":
 				if _place_item_on(st_serve, I.carrying):
-					print("[BOT] placed on serve:", I.carrying)
+					print("[BOT", bot_id, "] placed on serve:", I.carrying)
 					I.carrying = ""
 		Act.SERVE:
 			# 1) If Serving already has an item (leftover), serve it first.
@@ -263,7 +265,7 @@ func act(a: Act, delta: float) -> void:
 				if I.carrying == "":
 					# nothing to place: if plan done, finish; else go fetch next
 					if _plan_i >= plan.size():
-						print("[BOT] all items served. done ✅")
+						print("[BOT", bot_id, "] all items served. done ✅")
 						I.phase = "done"
 					else:
 						I.phase = "to_ing"
@@ -278,17 +280,17 @@ func act(a: Act, delta: float) -> void:
 			# 2) Serving is empty now. If we're carrying our cooked item, place & serve it.
 			if I.carrying != "":
 				if _place_item_on(st_serve, I.carrying):
-					print("[BOT] placed on serve:", I.carrying)
+					print("[BOT", bot_id, "] placed on serve:", I.carrying)
 					I.carrying = ""
 					_call_interact(st_serve)  # serve the placed dish
 
 					# Advance plan and loop or finish
 					_plan_i += 1
 					if _plan_i < plan.size():
-						print("[BOT] served one. remaining:", plan.size() - _plan_i)
+						print("[BOT", bot_id, "] served one. remaining:", plan.size() - _plan_i)
 						I.phase = "to_ing"
 					else:
-						print("[BOT] all items served. done ✅")
+						print("[BOT", bot_id, "] all items served. done ✅")
 						I.phase = "done"
 				else:
 					# Couldn't place (shouldn't happen since it's empty), try again
@@ -296,7 +298,7 @@ func act(a: Act, delta: float) -> void:
 			else:
 				# Nothing to serve and not carrying. Either done or go fetch next.
 				if _plan_i >= plan.size():
-					print("[BOT] all items served. done ✅")
+					print("[BOT", bot_id, "] all items served. done ✅")
 					I.phase = "done"
 				else:
 					I.phase = "to_ing"

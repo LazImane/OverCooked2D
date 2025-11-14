@@ -11,6 +11,6 @@ config_version=5
 [application]
 
 config/name="overccoked2D"
-run/main_scene="uid://cqet8q2suopqs"
+run/main_scene="uid://dtnsv846n4c5a"
 config/features=PackedStringArray("4.5", "Forward Plus")
 config/icon="res://icon.svg"
