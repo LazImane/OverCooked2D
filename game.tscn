@@ -1,4 +1,4 @@
-[gd_scene load_steps=21 format=3 uid="uid://dtnsv846n4c5a"]
+[gd_scene load_steps=21 format=3 uid="uid://cqet8q2suopqs"]
 
 [ext_resource type="Texture2D" uid="uid://dpa6d8byrp3t7" path="res://assets/pixelinterior_LRK/floorswalls_LRK.png" id="1_e2o6t"]
 [ext_resource type="Texture2D" uid="uid://ddldpwcweumie" path="res://assets/pixelinterior_LRK/kitchen_LRK.png" id="2_feb5d"]
@@ -36783,7 +36783,6 @@ script = ExtResource("5_7jktm")
 [node name="Bot" parent="." instance=ExtResource("9_vef74")]
 position = Vector2(-140, 85)
 collision_layer = 2
-plan = Array[String](["lettuce", "tomato"])
 
 [node name="Camera2D" type="Camera2D" parent="."]
 zoom = Vector2(2.3, 2.3)
@@ -36791,4 +36790,3 @@ zoom = Vector2(2.3, 2.3)
 [node name="Bot2" parent="." instance=ExtResource("9_vef74")]
 collision_layer = 2
 bot_id = 2
-plan = Array[String](["cucumber", "olive"])

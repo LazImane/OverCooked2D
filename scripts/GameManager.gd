@@ -1,56 +1,31 @@
 extends Node
 
-var station_order: Array = ["Ingredient", "Chopping", "Cooking", "Serving"] # optional
+var station_order: Array = ["Ingredient", "Chopping", "Cooking", "Serving"]
 var ingredients: Dictionary = {}
 var recipes: Dictionary = {}
 var stations_by_type: Dictionary = {}
 var current_recipe_id: String = "demo_salad"
 var _spawn_idx: int = 0
 
-# Default flow if nothing specified
-func get_recipe_flow(recipe_name: String) -> Array:
-	if recipes.has(recipe_name):
-		return recipes[recipe_name].get("flow", ["Chopping", "Cooking", "Serving"])
-	return ["Chopping", "Cooking", "Serving"]
+# === TASK QUEUE SYSTEM ===
+var task_queue: Array = []  # Array of task dictionaries
+var active_tasks: Dictionary = {}  # bot_id -> task
+var completed_items: Array = []  # Track what's been served
 
-# Optional per-ingredient override:
-# recipes["demo_salad"]["per_item_flow"] = {
-#   "olive": ["Chopping","Cooking","Serving"],  # cook olives
-#   "lettuce": ["Chopping","Serving"],          # no cooking
+# Task structure:
+# {
+#   "item": "lettuce",
+#   "flow": ["Chopping", "Serving"],
+#   "current_step": 0,
+#   "status": "pending",  # pending, assigned, in_progress, completed
+#   "assigned_to": -1
 # }
-func get_flow_for_item(recipe_name: String, item: String) -> Array:
-	var base := get_recipe_flow(recipe_name)
-	if recipes.has(recipe_name) and recipes[recipe_name].has("per_item_flow"):
-		var m: Dictionary = recipes[recipe_name]["per_item_flow"]
-		if m.has(item):
-			return m[item]
-	return base
-
-
-func get_recipe_ingredients(recipe_name: String) -> Array:
-	if recipes.has(recipe_name):
-		# use "base_items" or "ingredients" depending on your data
-		return recipes[recipe_name].get("base_items", [])
-	return []
-
-
-func next_base_item() -> String:
-	var rid := current_recipe_id if current_recipe_id != "" else "demo_salad"
-	if not recipes.has(rid):
-		return ""
-	var items: Array = recipes[rid].get("base_items", [])
-	if items.is_empty():
-		return ""
-	var id := String(items[_spawn_idx % items.size()])
-	_spawn_idx += 1
-	return id
-
 
 func _ready() -> void:
 	add_to_group("game_manager")
 	_register_stations()
 	_setup_demo_data()
-	process_recipe("demo_salad")
+	_build_task_queue(current_recipe_id)
 
 func _register_stations() -> void:
 	stations_by_type.clear()
@@ -60,7 +35,6 @@ func _register_stations() -> void:
 			continue
 		if not stations_by_type.has(t):
 			stations_by_type[t] = []
-		# append must happen every time (outside the if)
 		stations_by_type[t].append(s)
 	print("Registered stations:", stations_by_type.keys())
 
@@ -71,20 +45,125 @@ func _setup_demo_data() -> void:
 	ingredients["lettuce"]  = {"id":"lettuce",  "name":"lettuce",  "status":"raw"}
 	ingredients["tomato"]   = {"id":"tomato",   "name":"tomato",   "status":"raw"}
 	ingredients["cucumber"] = {"id":"cucumber", "name":"cucumber", "status":"raw"}
-	
+	ingredients["olive"]    = {"id":"olive",    "name":"olive",    "status":"raw"}
 
 	recipes = {
 		"demo_salad": {
-		"base_items": ["lettuce","tomato","cucumber","olive"],
-		"flow": ["Chopping","Serving"],  # default = chop then serve
-		"per_item_flow": {
-			"olive": ["Chopping","Cooking","Serving"]  # olives require cooking
+			"base_items": ["lettuce","tomato","cucumber","olive"],
+			"flow": ["Chopping","Serving"],  # default flow
+			"per_item_flow": {
+				"olive": ["Chopping","Cooking","Serving"]  # olives need cooking
+			}
 		}
 	}
-		
-	}
+
+# === BUILD TASK QUEUE ===
+func _build_task_queue(recipe_name: String) -> void:
+	task_queue.clear()
+	
+	if not recipes.has(recipe_name):
+		print("Recipe not found:", recipe_name)
+		return
+	
+	var items: Array = recipes[recipe_name].get("base_items", [])
+	
+	for item in items:
+		var flow := get_flow_for_item(recipe_name, String(item))
+		var task := {
+			"item": String(item),
+			"flow": flow,
+			"current_step": 0,
+			"status": "pending",
+			"assigned_to": -1
+		}
+		task_queue.append(task)
+	
+	print("Task queue built:", task_queue.size(), "items")
+
+# === BOT TASK ASSIGNMENT ===
+func request_task(bot_id: int) -> Dictionary:
+	"""Bot requests a new task from the manager"""
+	
+	# If bot already has an active task, return it
+	if active_tasks.has(bot_id):
+		return active_tasks[bot_id]
+	
+	# Find next pending task
+	for task in task_queue:
+		if task["status"] == "pending":
+			task["status"] = "assigned"
+			task["assigned_to"] = bot_id
+			active_tasks[bot_id] = task
+			print("[GM] Assigned task to bot", bot_id, ":", task["item"])
+			return task
+	
+	# No tasks available
+	return {}
+
+func complete_task(bot_id: int) -> void:
+	"""Bot reports task completion"""
+	if active_tasks.has(bot_id):
+		var task: Dictionary = active_tasks[bot_id]
+		task["status"] = "completed"
+		completed_items.append(task["item"])
+		active_tasks.erase(bot_id)
+		print("[GM] Bot", bot_id, "completed:", task["item"], "| Remaining:", get_pending_task_count())
+
+func get_pending_task_count() -> int:
+	var count := 0
+	for task in task_queue:
+		if task["status"] != "completed":
+			count += 1
+	return count
+
+func get_next_step_for_task(task: Dictionary) -> String:
+	"""Get the next station type needed for this task"""
+	if task.is_empty():
+		return ""
+	
+	var step_idx: int = task.get("current_step", 0)
+	var flow: Array = task.get("flow", [])
+	
+	if step_idx < flow.size():
+		return String(flow[step_idx])
+	
+	return ""  # Task complete
+
+func advance_task_step(bot_id: int) -> void:
+	"""Bot finished current step, move to next"""
+	if active_tasks.has(bot_id):
+		active_tasks[bot_id]["current_step"] += 1
+
+func get_station_for_type(station_type: String) -> Node:
+	"""Get a station of the requested type (could be enhanced for load balancing)"""
+	var stations: Array = stations_by_type.get(station_type, [])
+	if stations.is_empty():
+		return null
+	
+	# Simple: return first station (could add load balancing here)
+	return stations[0]
+
+# === EXISTING FUNCTIONS (kept for compatibility) ===
+func get_recipe_flow(recipe_name: String) -> Array:
+	if recipes.has(recipe_name):
+		return recipes[recipe_name].get("flow", ["Chopping", "Cooking", "Serving"])
+	return ["Chopping", "Cooking", "Serving"]
+
+func get_flow_for_item(recipe_name: String, item: String) -> Array:
+	var base := get_recipe_flow(recipe_name)
+	if recipes.has(recipe_name) and recipes[recipe_name].has("per_item_flow"):
+		var m: Dictionary = recipes[recipe_name]["per_item_flow"]
+		if m.has(item):
+			return m[item]
+	return base
+
+func get_recipe_ingredients(recipe_name: String) -> Array:
+	if recipes.has(recipe_name):
+		return recipes[recipe_name].get("base_items", [])
+	return []
 
 func process_recipe(recipe_name: String) -> void:
+	"""Legacy function - kept for reference but task system is preferred"""
 	if not recipes.has(recipe_name):
 		print("Recipe not found:", recipe_name)
 		return
@@ -95,59 +174,7 @@ func process_recipe(recipe_name: String) -> void:
 
 	print("Processing recipe:", recipe_name, "flow:", flow, "base_items:", ing_list)
 
-	for ing_id in ing_list:
-		if not ingredients.has(ing_id):
-			print("Unknown ingredient:", ing_id)
-			continue
-
-		var item: Dictionary = ingredients[ing_id]  # reference to the stored dict
-		print("\n=== Start item:", ing_id, "status:", item.get("status", ""))
-
-		for stype in flow:
-			var station_list: Array = stations_by_type.get(stype, [])
-			if station_list.is_empty():
-				print("Warning: no station of type", stype, "found. Skipping.")
-				continue
-
-			var station: Node = station_list[0]
-			print("-> Sending", ing_id, "to", stype, "station:", station.name)
-
-			var new_status := ""
-			if station.has_method("process_item"):
-				# Expect Station.process_item to mutate item["status"] and return the new status.
-				new_status = station.process_item(item)
-			else:
-				# Fallback: do a generic transform here if station lacks process_item
-				new_status = _generic_transform(stype, item.get("status", "raw"))
-
-			# Keep item["status"] consistent if station didn't set it
-			if typeof(new_status) == TYPE_STRING and new_status != "":
-				item["status"] = new_status
-
-			print("   status now:", item.get("status", ""))
-
-		print("Final status for", ing_id, "=", item.get("status", ""))
-
-func _generic_transform(station_type: String, status: String) -> String:
-	match station_type:
-		"Ingredient":
-			return "raw"
-		"Chopping":
-			if status == "raw":
-				return "chopped"
-		"Cooking":
-			if status == "chopped":
-				return "cooked"
-		"Serving":
-			# Serving would normally consume; you can clear or mark as "served"
-			if status == "chopped" or status == "cooked" or status == "raw":
-				return "served"
-		_:
-			pass
-	return status
-
 func get_ingredient_status(ing_id: String) -> String:
 	if ingredients.has(ing_id):
 		return String(ingredients[ing_id].get("status", ""))
-	print("Ingredient:", ing_id, "does not exist")
 	return ""
