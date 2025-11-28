@@ -6,8 +6,8 @@ signal station_processed(ingredient_name: String, new_status: String)
 var current_item: String = ""
 @export var spawn_item_when_interacted: String = ""
 
-# For serving station: track all ingredients
-var served_ingredients: Array = []  # Array of ingredient Nodes
+# For serving station: track ingredients by recipe
+var served_ingredients: Dictionary = {}  # { recipe_id: [ingredient_nodes] }
 var _gm: Node = null
 var _local_spawn_idx := 0
 
@@ -99,16 +99,16 @@ func take_item() -> Node:
 	print("[STATION] take_item() -> null (nothing to take) from", name)
 	return null
 
-func place_item(it) -> bool:
+func place_item(it, recipe_id: String = "") -> bool:
 	"""Place an ingredient on this station"""
 	if it == null:
 		return false
 	
-	# Serving station: accumulate ingredients
+	# Serving station: accumulate ingredients by recipe
 	if station_type == "Serving":
 		if typeof(it) == TYPE_OBJECT and it is Node:
-			_add_ingredient_to_serving(it)
-			print("[STATION] 🍽️ Added to serving station:", it.name, "(total: %d)" % served_ingredients.size())
+			_add_ingredient_to_serving(it, recipe_id)
+			print("[STATION] 🍽️ Added to serving station (recipe: %s): %s" % [recipe_id, it.name])
 			return true
 		return false
 	
@@ -126,7 +126,6 @@ func place_item(it) -> bool:
 			print("[STATION] place_item(node:", current_item, ") on", name)
 			return true
 		else:
-			# String placement (legacy)
 			var gm = _ensure_gm()
 			if gm and gm.has_method("spawn_ingredient"):
 				var node = gm.spawn_ingredient(String(it), get_parent())
@@ -146,13 +145,19 @@ func place_item(it) -> bool:
 func has_ingredient() -> bool:
 	"""Check if station has any ingredients"""
 	if station_type == "Serving":
-		return served_ingredients.size() > 0
+		for recipe_ingredients in served_ingredients.values():
+			if recipe_ingredients.size() > 0:
+				return true
+		return false
 	return get_current_ingredient() != null
 
 func get_current_ingredient() -> Node:
 	"""Get the first/main ingredient on this station"""
 	if station_type == "Serving":
-		return served_ingredients[0] if served_ingredients.size() > 0 else null
+		for recipe_ingredients in served_ingredients.values():
+			if recipe_ingredients.size() > 0:
+				return recipe_ingredients[0]
+		return null
 	
 	# For other stations, check children for ingredient nodes
 	for child in get_children():
@@ -169,34 +174,42 @@ func _add_ingredient(ing: Node) -> void:
 	if ing.has_method("drop_at"):
 		ing.drop_at(self)
 
-func _add_ingredient_to_serving(ing: Node) -> void:
-	"""Add an ingredient to the serving station (accumulates)"""
+func _add_ingredient_to_serving(ing: Node, recipe_id: String) -> void:
+	"""Add an ingredient to the serving station (accumulates by recipe)"""
+	if recipe_id == "":
+		push_warning("[STATION] No recipe_id provided for serving station!")
+		recipe_id = "unknown"
+	
+	if not served_ingredients.has(recipe_id):
+		served_ingredients[recipe_id] = []
+	
 	if ing.get_parent():
 		ing.get_parent().remove_child(ing)
 	add_child(ing)
 	
 	# Arrange ingredients in a row or grid
-	var idx = served_ingredients.size()
-	var offset_x = (idx % 3) * 20 - 20  # 3 items per row, centered
+	var idx = served_ingredients[recipe_id].size()
+	var offset_x = (idx % 3) * 20 - 20
 	var offset_y = int(idx / 3) * 20 - 10
 	ing.position = Vector2(offset_x, offset_y)
 	
-	served_ingredients.append(ing)
+	served_ingredients[recipe_id].append(ing)
 	
 	if ing.has_method("drop_at"):
 		ing.drop_at(self)
 	
-	_check_recipe_completion()
+	_check_recipe_completion(recipe_id)
 
 func _remove_ingredient(ing: Node) -> void:
 	"""Remove an ingredient from tracking"""
 	if station_type == "Serving":
-		served_ingredients.erase(ing)
+		for recipe_id in served_ingredients.keys():
+			served_ingredients[recipe_id].erase(ing)
 	
 	if ing.get_parent() == self:
 		remove_child(ing)
 
-func _check_recipe_completion() -> void:
+func _check_recipe_completion(recipe_id: String) -> void:
 	"""Check if the recipe is complete and show final dish icon"""
 	if station_type != "Serving":
 		return
@@ -206,44 +219,54 @@ func _check_recipe_completion() -> void:
 		return
 	
 	# Get recipe requirements
-	var recipe_id = gm.current_recipe_id if "current_recipe_id" in gm else "demo_salad"
 	var required_ingredients = []
-	
 	if gm.has_method("get_recipe_ingredients"):
 		required_ingredients = gm.get_recipe_ingredients(recipe_id)
 	
-	# Check if we have all required ingredients
-	if served_ingredients.size() >= required_ingredients.size() and required_ingredients.size() > 0:
-		print("[STATION] 🎉 Recipe complete! Showing final dish...")
+	# Check if THIS specific recipe has all required ingredients
+	var current_count = served_ingredients[recipe_id].size() if served_ingredients.has(recipe_id) else 0
+	
+	if current_count >= required_ingredients.size() and required_ingredients.size() > 0:
+		print("[STATION] 🎉 Recipe '%s' complete! Showing final dish..." % recipe_id)
 		_show_final_dish(recipe_id)
 
 func _show_final_dish(recipe_id: String) -> void:
 	"""Hide individual ingredients and show the complete dish icon"""
-	# Hide all individual ingredient sprites
-	for ing in served_ingredients:
+	if not served_ingredients.has(recipe_id):
+		return
+	
+	var ingredients_for_recipe = served_ingredients[recipe_id]
+	
+	# Hide all individual ingredient sprites for this recipe
+	for ing in ingredients_for_recipe:
 		if is_instance_valid(ing) and ing.has_node("Sprite2D"):
 			ing.get_node("Sprite2D").visible = false
 	
-	# Determine which dish to show
+	# Determine which dish to show based on the actual recipe_id
 	var dish_type = "salad"  # Default
 	if recipe_id == "tomato_soup":
 		dish_type = "tomato_soup"
+	elif recipe_id == "demo_salad":
+		dish_type = "salad"
 	
 	# Create a new ingredient node to show the final dish
 	var gm = _ensure_gm()
 	if gm and gm.has_method("spawn_ingredient"):
 		var final_dish = gm.spawn_ingredient(dish_type, self)
 		if final_dish:
-			final_dish.position = Vector2.ZERO  # Center it on the station
-			final_dish.scale = Vector2(0.15, 0.15)  # Slightly larger for the final dish
-			print("[STATION] ✅ Final dish displayed: %s" % dish_type)
+			final_dish.position = Vector2.ZERO
+			final_dish.scale = Vector2(0.15, 0.15)
+			print("[STATION] ✅ Final dish displayed: %s (recipe: %s)" % [dish_type, recipe_id])
 			
-			# Optional: Start serving animation after a short delay
+			# Start serving animation after a short delay
 			await get_tree().create_timer(1.5).timeout
-			_serve_complete_dish(final_dish)
+			_serve_complete_dish(recipe_id, final_dish)
 
-func _serve_complete_dish(final_dish: Node = null) -> void:
+func _serve_complete_dish(recipe_id: String, final_dish: Node = null) -> void:
 	"""Animate the final dish disappearing (served to customer)"""
+	if not served_ingredients.has(recipe_id):
+		return
+	
 	var tween = create_tween()
 	tween.set_parallel(true)
 	
@@ -253,30 +276,33 @@ func _serve_complete_dish(final_dish: Node = null) -> void:
 		tween.tween_property(final_dish, "position", final_dish.position + Vector2(0, -50), 0.8)
 		tween.tween_property(final_dish, "scale", Vector2(0.2, 0.2), 0.8)
 	
-	# Also animate out the hidden ingredients
-	for ing in served_ingredients:
+	# Also animate out the hidden ingredients for this recipe
+	for ing in served_ingredients[recipe_id]:
 		if is_instance_valid(ing):
 			tween.tween_property(ing, "modulate:a", 0.0, 0.8)
 	
 	# Wait for animation to complete
 	await tween.finished
 	
-	# Clean up all ingredients
+	# Clean up all ingredients for this recipe
 	if final_dish and is_instance_valid(final_dish):
 		final_dish.queue_free()
 	
-	for ing in served_ingredients:
+	for ing in served_ingredients[recipe_id]:
 		if is_instance_valid(ing):
 			ing.queue_free()
 	
-	served_ingredients.clear()
-	current_item = ""
+	served_ingredients[recipe_id].clear()
+	served_ingredients.erase(recipe_id)
+	
+	if served_ingredients.size() == 0:
+		current_item = ""
+	
 	update_appearance()
 	
-	print("[STATION] ✅ Dish served to customer!")
+	print("[STATION] ✅ Dish '%s' served to customer!" % recipe_id)
 
 func update_appearance() -> void:
-	# Visual feedback for station occupancy
 	if has_node("Sprite2D"):
 		if has_ingredient():
 			$Sprite2D.modulate = Color(1, 0.95, 0.85)
@@ -295,7 +321,7 @@ func _spawn_from_recipe_or_fallback() -> String:
 	if _gm == null:
 		_gm = get_tree().get_first_node_in_group("game_manager")
 	if _gm == null:
-		push_warning("[STATION] No GameManager found — cannot determine ingredient to spawn.")
+		push_warning("[STATION] No GameManager found – cannot determine ingredient to spawn.")
 		return ""
 
 	if _gm.has_method("next_base_item"):
@@ -324,5 +350,5 @@ func _spawn_from_recipe_or_fallback() -> String:
 		print("[STATION] Using fallback exported item:", spawn_item_when_interacted)
 		return spawn_item_when_interacted
 
-	push_warning("[STATION] No ingredients available to spawn — returning placeholder 'unknown_item'")
+	push_warning("[STATION] No ingredients available to spawn – returning placeholder 'unknown_item'")
 	return "unknown_item"

@@ -22,6 +22,7 @@ var stations: Dictionary = {}
 
 # Current task
 var current_ingredient: String = ""
+var current_recipe_id: String = ""   # recipe for THIS task
 var flow_steps: Array = []
 var current_step: int = 0
 var carried_item: Node = null
@@ -45,7 +46,7 @@ func _ready() -> void:
 	_find_stations()
 	_request_next_task()
 	
-	print("[BOT %d] Ready | Recipe: %s" % [bot_id, recipe_name])
+	print("[BOT %d] Ready | Default recipe: %s" % [bot_id, recipe_name])
 
 func _physics_process(delta: float) -> void:
 	match current_action:
@@ -79,7 +80,17 @@ func _request_next_task() -> void:
 		return
 	
 	var result = _gm.request_next_ingredient(bot_id)
-	current_ingredient = str(result) if result != null else ""
+	current_recipe_id = ""
+	current_ingredient = ""
+	
+	# New protocol: GameManager returns a Dictionary { recipe_id, ingredient_id }
+	if typeof(result) == TYPE_DICTIONARY:
+		current_recipe_id = str(result.get("recipe_id", ""))
+		current_ingredient = str(result.get("ingredient_id", ""))
+	else:
+		# Fallback: treat result as the ingredient id, use exported recipe_name
+		current_recipe_id = recipe_name
+		current_ingredient = str(result) if result != null else ""
 	
 	if current_ingredient == "":
 		print("[BOT %d] ✅ No more tasks - all done!" % bot_id)
@@ -87,17 +98,24 @@ func _request_next_task() -> void:
 		return
 	
 	current_step = 0
+	
+	# Use per-task recipe if available, else fallback to exported recipe_name
+	var flow_recipe_id := current_recipe_id if current_recipe_id != "" else recipe_name
+	
 	if _gm.has_method("get_flow_for_item"):
-		flow_steps = _gm.get_flow_for_item(recipe_name, current_ingredient)
+		flow_steps = _gm.get_flow_for_item(flow_recipe_id, current_ingredient)
 	else:
 		flow_steps = ["Ingredient", "Chopping", "Serving"]
 	
-	print("[BOT %d] 📋 Task: %s | Flow: %s" % [bot_id, current_ingredient, flow_steps])
+	print("[BOT %d] 📋 Task: %s | Recipe: %s | Flow: %s" %
+		[bot_id, current_ingredient, flow_recipe_id, flow_steps])
 	
 	_go_to_next_step()
 
+
 func _go_to_next_step() -> void:
 	if current_step >= flow_steps.size():
+		# Task finished for this ingredient
 		if _gm and _gm.has_method("notify_served"):
 			_gm.notify_served(current_ingredient)
 		_request_next_task()
@@ -131,6 +149,7 @@ func _on_arrived_at_station() -> void:
 				current_action = Action.TAKE_INGREDIENT
 		
 		"Serving":
+			# If we have something, we place it; Serving station visuals handle the rest
 			if carried_item != null:
 				current_action = Action.PLACE_ITEM
 			else:
@@ -143,22 +162,20 @@ func _take_from_station() -> void:
 	
 	var station_type: String = flow_steps[current_step]
 	
-	# FIXED: Handle Ingredient station spawning
+	# Ingredient station: spawn from GameManager and immediately take it
 	if station_type == "Ingredient":
 		print("[BOT %d] 🏭 Spawning %s at Ingredient station" % [bot_id, current_ingredient])
 		
-		# Tell GameManager to spawn the specific ingredient type
 		if _gm and _gm.has_method("spawn_ingredient"):
 			var item_node = _gm.spawn_ingredient(current_ingredient, target_station.get_parent())
 			
 			if item_node:
-				# Place it on the station first
 				if target_station.has_method("place_item"):
 					if target_station.place_item(item_node):
 						print("[BOT %d] 📦 Ingredient spawned and placed on station" % bot_id)
 						
-						# Now take it immediately
-						await get_tree().create_timer(0.1).timeout  # Small delay for visual
+						# Now take it immediately (small delay for visuals)
+						await get_tree().create_timer(0.1).timeout
 						var taken_item = _take_item_node_from(target_station)
 						if taken_item:
 							carried_item = taken_item
@@ -186,7 +203,7 @@ func _take_from_station() -> void:
 			current_action = Action.IDLE
 		return
 	
-	# Take from processing stations (Chopping, Cooking)
+	# Chopping / Cooking: take processed item
 	var item_node = _take_item_node_from(target_station)
 	if item_node:
 		carried_item = item_node
@@ -198,13 +215,25 @@ func _take_from_station() -> void:
 		push_error("[BOT %d] Failed to take from %s" % [bot_id, station_type])
 		current_action = Action.IDLE
 
+
 func _place_on_station() -> void:
 	if not carried_item or not target_station:
 		_go_to_next_step()
 		return
 	
-	if _place_item_node_on(target_station, carried_item):
-		print("[BOT %d] 📥 Placed on %s" % [bot_id, flow_steps[current_step]])
+	# Pass recipe_id to serving station
+	var station_type: String = flow_steps[current_step]
+	var success := false
+	
+	if station_type == "Serving" and target_station.has_method("place_item"):
+		# Call place_item with recipe_id parameter for serving stations
+		success = target_station.place_item(carried_item, current_recipe_id)
+	else:
+		# Other stations use the normal helper function
+		success = _place_item_node_on(target_station, carried_item)
+	
+	if success:
+		print("[BOT %d] 📥 Placed on %s (recipe: %s)" % [bot_id, station_type, current_recipe_id])
 		carried_item = null
 		carried_item_type = ""
 		
@@ -220,10 +249,9 @@ func _process_at_station() -> void:
 	
 	var station_type: String = flow_steps[current_step]
 	
-	# Serving station: just drop the item and leave (station handles the rest)
+	# Serving station: item already placed in _place_on_station()
+	# Station visuals (Station.gd) handle accumulating ingredients and final dish.
 	if station_type == "Serving":
-		# Item was already placed in _place_on_station()
-		# Just notify GameManager and move on
 		if _gm and _gm.has_method("notify_served"):
 			_gm.notify_served(current_ingredient)
 		

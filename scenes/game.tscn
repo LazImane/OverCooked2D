@@ -1665,6 +1665,7 @@ time_label = NodePath("../CanvasLayer/Label")
 
 [node name="Bot" parent="." instance=ExtResource("10_vtaks")]
 position = Vector2(1, 90)
+collision_layer = 8
 
 [node name="Bot2" parent="." instance=ExtResource("10_vtaks")]
 position = Vector2(121, 90)
