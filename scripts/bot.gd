@@ -14,6 +14,7 @@ enum Action {
 @export var accel := 800.0
 @export var stop_distance := 50.0
 @export var recipe_name: String = "demo_salad"
+@export var animPlayer:AnimationPlayer 
 
 # References
 var _gm: Node = null
@@ -34,6 +35,7 @@ var target_station: Node = null
 @onready var sprite = $Sprite2D
 
 func _ready() -> void:
+	playAnim(true)
 	_gm = get_tree().get_first_node_in_group("game_manager")
 	if not _gm:
 		push_error("[BOT %d] GameManager not found!" % bot_id)
@@ -269,6 +271,12 @@ func _find_stations() -> void:
 		if "station_type" in station:
 			stations[station.station_type] = station
 	print("[BOT %d] Found stations: %s" % [bot_id, stations.keys()])
+
+func playAnim(b:bool):
+	if b:
+		animPlayer.play("hop")
+	else:
+		animPlayer.stop()
 
 func _call_interact(station: Node) -> void:
 	if station and station.has_method("interact"):
