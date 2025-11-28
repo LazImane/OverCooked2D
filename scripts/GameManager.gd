@@ -1,23 +1,57 @@
 extends Node
 
-var station_order: Array = ["Ingredient", "Chopping", "Cooking", "Serving"] # optional
+var station_order: Array = ["Ingredient", "Chopping", "Cooking", "Serving"]
 var ingredients: Dictionary = {}
 var recipes: Dictionary = {}
 var stations_by_type: Dictionary = {}
 var current_recipe_id: String = "demo_salad"
 var _spawn_idx: int = 0
 
-# Default flow if nothing specified
+@export var ingredient_scene: PackedScene = null
+
+func _ready() -> void:
+	add_to_group("game_manager")
+	_setup_demo_data()  # Setup data BEFORE registering stations
+	_register_stations()
+	process_recipe("demo_salad")
+
+func _register_stations() -> void:
+	stations_by_type.clear()
+	for s in get_tree().get_nodes_in_group("stations"):
+		var t: String = s.station_type
+		if t == "":
+			continue
+		if not stations_by_type.has(t):
+			stations_by_type[t] = []
+		stations_by_type[t].append(s)
+	print("Registered stations:", stations_by_type.keys())
+
+func _setup_demo_data() -> void:
+	ingredients.clear()
+	recipes.clear()
+
+	# FIX 1: Add all ingredients used in recipes
+	ingredients["lettuce"]  = {"id":"lettuce",  "name":"lettuce",  "status":"raw"}
+	ingredients["tomato"]   = {"id":"tomato",   "name":"tomato",   "status":"raw"}
+	ingredients["cucumber"] = {"id":"cucumber", "name":"cucumber", "status":"raw"}
+	ingredients["olives"]    = {"id":"olives",    "name":"olives",    "status":"raw"}
+
+	# FIX 2: Add "Ingredient" as first step in flow so bot can pick up items
+	recipes = {
+		"demo_salad": {
+			"base_items": ["lettuce","tomato","cucumber","olives"],
+			"flow": ["Ingredient", "Chopping", "Serving"],  # Added "Ingredient" first
+			"per_item_flow": {
+				"olives": ["Ingredient", "Chopping", "Cooking", "Serving"]  # olives require cooking
+			}
+		}
+	}
+
 func get_recipe_flow(recipe_name: String) -> Array:
 	if recipes.has(recipe_name):
-		return recipes[recipe_name].get("flow", ["Chopping", "Cooking", "Serving"])
-	return ["Chopping", "Cooking", "Serving"]
+		return recipes[recipe_name].get("flow", ["Ingredient", "Chopping", "Serving"])
+	return ["Ingredient", "Chopping", "Serving"]
 
-# Optional per-ingredient override:
-# recipes["demo_salad"]["per_item_flow"] = {
-#   "olive": ["Chopping","Cooking","Serving"],  # cook olives
-#   "lettuce": ["Chopping","Serving"],          # no cooking
-# }
 func get_flow_for_item(recipe_name: String, item: String) -> Array:
 	var base := get_recipe_flow(recipe_name)
 	if recipes.has(recipe_name) and recipes[recipe_name].has("per_item_flow"):
@@ -26,13 +60,10 @@ func get_flow_for_item(recipe_name: String, item: String) -> Array:
 			return m[item]
 	return base
 
-
 func get_recipe_ingredients(recipe_name: String) -> Array:
 	if recipes.has(recipe_name):
-		# use "base_items" or "ingredients" depending on your data
 		return recipes[recipe_name].get("base_items", [])
 	return []
-
 
 func next_base_item() -> String:
 	var rid := current_recipe_id if current_recipe_id != "" else "demo_salad"
@@ -44,48 +75,6 @@ func next_base_item() -> String:
 	var id := String(items[_spawn_idx % items.size()])
 	_spawn_idx += 1
 	return id
-
-
-#coté visuals getiing the ingredients scene
-@export var ingredient_scene: PackedScene = null  # assign res://scenes/Ingredient.tscn in the editor
-
-func _ready() -> void:
-	add_to_group("game_manager")
-	_register_stations()
-	_setup_demo_data()
-	process_recipe("demo_salad")
-
-func _register_stations() -> void:
-	stations_by_type.clear()
-	for s in get_tree().get_nodes_in_group("stations"):
-		var t: String = s.station_type
-		if t == "":
-			continue
-		if not stations_by_type.has(t):
-			stations_by_type[t] = []
-		# append must happen every time (outside the if)
-		stations_by_type[t].append(s)
-	print("Registered stations:", stations_by_type.keys())
-
-func _setup_demo_data() -> void:
-	ingredients.clear()
-	recipes.clear()
-
-	ingredients["lettuce"]  = {"id":"lettuce",  "name":"lettuce",  "status":"raw"}
-	ingredients["tomato"]   = {"id":"tomato",   "name":"tomato",   "status":"raw"}
-	ingredients["cucumber"] = {"id":"cucumber", "name":"cucumber", "status":"raw"}
-	
-
-	recipes = {
-		"demo_salad": {
-		"base_items": ["lettuce","tomato","cucumber","olive"],
-		"flow": ["Chopping","Serving"],  # default = chop then serve
-		"per_item_flow": {
-			"olive": ["Chopping","Cooking","Serving"]  # olives require cooking
-		}
-	}
-		
-	}
 
 func process_recipe(recipe_name: String) -> void:
 	if not recipes.has(recipe_name):
@@ -103,10 +92,13 @@ func process_recipe(recipe_name: String) -> void:
 			print("Unknown ingredient:", ing_id)
 			continue
 
-		var item: Dictionary = ingredients[ing_id]  # reference to the stored dict
+		var item: Dictionary = ingredients[ing_id]
 		print("\n=== Start item:", ing_id, "status:", item.get("status", ""))
 
 		for stype in flow:
+			if stype == "Ingredient":
+				continue  # Skip ingredient station in processing (it's just for picking up)
+			
 			var station_list: Array = stations_by_type.get(stype, [])
 			if station_list.is_empty():
 				print("Warning: no station of type", stype, "found. Skipping.")
@@ -117,13 +109,10 @@ func process_recipe(recipe_name: String) -> void:
 
 			var new_status := ""
 			if station.has_method("process_item"):
-				# Expect Station.process_item to mutate item["status"] and return the new status.
 				new_status = station.process_item(item)
 			else:
-				# Fallback: do a generic transform here if station lacks process_item
 				new_status = _generic_transform(stype, item.get("status", "raw"))
 
-			# Keep item["status"] consistent if station didn't set it
 			if typeof(new_status) == TYPE_STRING and new_status != "":
 				item["status"] = new_status
 
@@ -142,11 +131,8 @@ func _generic_transform(station_type: String, status: String) -> String:
 			if status == "chopped":
 				return "cooked"
 		"Serving":
-			# Serving would normally consume; you can clear or mark as "served"
-			if status == "chopped" or status == "cooked" or status == "raw":
+			if status in ["chopped", "cooked", "raw"]:
 				return "served"
-		_:
-			pass
 	return status
 
 func get_ingredient_status(ing_id: String) -> String:
@@ -154,8 +140,7 @@ func get_ingredient_status(ing_id: String) -> String:
 		return String(ingredients[ing_id].get("status", ""))
 	print("Ingredient:", ing_id, "does not exist")
 	return ""
-	
-###############VISUALS  : ADDING INGREDIENT####################
+
 var count := 0 
 func spawn_ingredient(type: String = "", parent_opt: Node = null) -> Node:
 	var game_root: Node = parent_opt if parent_opt != null else get_parent()

@@ -11,10 +11,16 @@ var _local_idx: int = 0
 const ICONS := {
 	"tomato": preload("res://assets/ingredients/tomato.png"),
 	"chopped_tomato": preload("res://assets/ingredients/chopped_tomato.png"),
+	"chopped_lettuce": preload("res://assets/ingredients/chopped_lettuce.png"),
+	"chopped_cucumber": preload("res://assets/ingredients/chopped_cucumber.png"),
+	"chopped_olives": preload("res://assets/ingredients/chopped_olives.png"),
 	"cooked_tomato": preload("res://assets/ingredients/pot.png"),
+	"cooked_olives": preload("res://assets/ingredients/chopped_olives.png"),
 	"tomato_soup": preload("res://assets/ingredients/tomato_soup.png"),
-	#"lettuce": preload("res://assets/ingredients/lettuce.png"),
-	#"cucumber": preload("res://assets/ingredients/cucumber.png"),
+	"lettuce": preload("res://assets/ingredients/lettuce.png"),
+	"cucumber": preload("res://assets/ingredients/cucumber.png"),
+	"olives":preload("res://assets/ingredients/olives.png"),
+	"salad":preload("res://assets/ingredients/salad.png")
 }
 
 func _ready() -> void:
