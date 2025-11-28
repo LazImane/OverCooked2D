@@ -218,21 +218,23 @@ func _process_at_station() -> void:
 	
 	var station_type: String = flow_steps[current_step]
 	
-	# Trigger processing
-	_call_interact(target_station)
-	
-	# Serving station finishes the ingredient
+	# Serving station: just drop the item and leave (station handles the rest)
 	if station_type == "Serving":
-		if carried_item:
-			carried_item.queue_free()
-			carried_item = null
-			carried_item_type = ""
-		print("[BOT %d] ✅ Served: %s" % [bot_id, current_ingredient])
+		# Item was already placed in _place_on_station()
+		# Just notify GameManager and move on
+		if _gm and _gm.has_method("notify_served"):
+			_gm.notify_served(current_ingredient)
+		
+		print("[BOT %d] ✅ Placed on serving station: %s" % [bot_id, current_ingredient])
+		carried_item = null
+		carried_item_type = ""
 		current_step += 1
 		_go_to_next_step()
 		return
 	
-	# Other stations: take the processed result
+	# Other stations (Chopping, Cooking): process then take
+	_call_interact(target_station)
+	
 	var item_node = _take_item_node_from(target_station)
 	if item_node:
 		carried_item = item_node
