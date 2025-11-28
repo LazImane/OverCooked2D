@@ -219,8 +219,19 @@ func _place_on_station() -> void:
 		_go_to_next_step()
 		return
 	
-	if _place_item_node_on(target_station, carried_item):
-		print("[BOT %d] 📥 Placed on %s" % [bot_id, flow_steps[current_step]])
+	# Pass recipe_id to serving station
+	var station_type: String = flow_steps[current_step]
+	var success := false
+	
+	if station_type == "Serving" and target_station.has_method("place_item"):
+		# Call place_item with recipe_id parameter for serving stations
+		success = target_station.place_item(carried_item, current_recipe_id)
+	else:
+		# Other stations use the normal helper function
+		success = _place_item_node_on(target_station, carried_item)
+	
+	if success:
+		print("[BOT %d] 📥 Placed on %s (recipe: %s)" % [bot_id, station_type, current_recipe_id])
 		carried_item = null
 		carried_item_type = ""
 		
@@ -228,7 +239,6 @@ func _place_on_station() -> void:
 	else:
 		push_error("[BOT %d] Failed to place item" % bot_id)
 		current_action = Action.IDLE
-
 
 func _process_at_station() -> void:
 	if not target_station:
