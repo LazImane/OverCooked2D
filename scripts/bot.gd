@@ -21,6 +21,7 @@ var stations: Dictionary = {}
 
 # Current task
 var current_ingredient: String = ""
+var current_recipe_id: String = ""
 var flow_steps: Array = []
 var current_step: int = 0
 var carried_item: Node = null
@@ -77,7 +78,17 @@ func _request_next_task() -> void:
 		return
 	
 	var result = _gm.request_next_ingredient(bot_id)
-	current_ingredient = str(result) if result != null else ""
+	current_recipe_id = ""
+	current_ingredient = ""
+	
+	# New protocol: GameManager returns a Dictionary { recipe_id, ingredient_id }
+	if typeof(result) == TYPE_DICTIONARY:
+		current_recipe_id = str(result.get("recipe_id", ""))
+		current_ingredient = str(result.get("ingredient_id", ""))
+	else:
+		# Fallback / backward-compatible: treat result as the ingredient id
+		current_recipe_id = recipe_name
+		current_ingredient = str(result) if result != null else ""
 	
 	if current_ingredient == "":
 		print("[BOT %d] ✅ No more tasks - all done!" % bot_id)
@@ -85,14 +96,20 @@ func _request_next_task() -> void:
 		return
 	
 	current_step = 0
+	
+	# Use per-task recipe if available, else fallback to exported recipe_name
+	var flow_recipe_id := current_recipe_id if current_recipe_id != "" else recipe_name
+	
 	if _gm.has_method("get_flow_for_item"):
-		flow_steps = _gm.get_flow_for_item(recipe_name, current_ingredient)
+		flow_steps = _gm.get_flow_for_item(flow_recipe_id, current_ingredient)
 	else:
 		flow_steps = ["Ingredient", "Chopping", "Serving"]
 	
-	print("[BOT %d] 📋 Task: %s | Flow: %s" % [bot_id, current_ingredient, flow_steps])
+	print("[BOT %d] 📋 Task: %s | Recipe: %s | Flow: %s" %
+		[bot_id, current_ingredient, flow_recipe_id, flow_steps])
 	
 	_go_to_next_step()
+
 
 func _go_to_next_step() -> void:
 	if current_step >= flow_steps.size():
