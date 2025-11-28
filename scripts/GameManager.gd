@@ -12,7 +12,7 @@ var task_queue: Array = []  # Array of task dictionaries
 var active_tasks: Dictionary = {}  # bot_id -> task
 var completed_items: Array = []  # Track what's been served
 
-# Task structure:
+# Task structure:_è
 # {
 #   "item": "lettuce",
 #   "flow": ["Chopping", "Serving"],
