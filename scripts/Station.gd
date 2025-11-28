@@ -197,7 +197,7 @@ func _remove_ingredient(ing: Node) -> void:
 		remove_child(ing)
 
 func _check_recipe_completion() -> void:
-	"""Check if the recipe is complete and trigger serving animation"""
+	"""Check if the recipe is complete and show final dish icon"""
 	if station_type != "Serving":
 		return
 	
@@ -214,26 +214,57 @@ func _check_recipe_completion() -> void:
 	
 	# Check if we have all required ingredients
 	if served_ingredients.size() >= required_ingredients.size() and required_ingredients.size() > 0:
-		print("[STATION] 🎉 Recipe complete! Serving %d ingredients..." % served_ingredients.size())
-		_serve_complete_dish()
+		print("[STATION] 🎉 Recipe complete! Showing final dish...")
+		_show_final_dish(recipe_id)
 
-func _serve_complete_dish() -> void:
-	"""Animate all ingredients disappearing and notify GameManager"""
-	# Create a tween for smooth animation
+func _show_final_dish(recipe_id: String) -> void:
+	"""Hide individual ingredients and show the complete dish icon"""
+	# Hide all individual ingredient sprites
+	for ing in served_ingredients:
+		if is_instance_valid(ing) and ing.has_node("Sprite2D"):
+			ing.get_node("Sprite2D").visible = false
+	
+	# Determine which dish to show
+	var dish_type = "salad"  # Default
+	if recipe_id == "tomato_soup":
+		dish_type = "tomato_soup"
+	
+	# Create a new ingredient node to show the final dish
+	var gm = _ensure_gm()
+	if gm and gm.has_method("spawn_ingredient"):
+		var final_dish = gm.spawn_ingredient(dish_type, self)
+		if final_dish:
+			final_dish.position = Vector2.ZERO  # Center it on the station
+			final_dish.scale = Vector2(0.15, 0.15)  # Slightly larger for the final dish
+			print("[STATION] ✅ Final dish displayed: %s" % dish_type)
+			
+			# Optional: Start serving animation after a short delay
+			await get_tree().create_timer(1.5).timeout
+			_serve_complete_dish(final_dish)
+
+func _serve_complete_dish(final_dish: Node = null) -> void:
+	"""Animate the final dish disappearing (served to customer)"""
 	var tween = create_tween()
 	tween.set_parallel(true)
 	
+	# Animate the final dish if it exists
+	if final_dish and is_instance_valid(final_dish):
+		tween.tween_property(final_dish, "modulate:a", 0.0, 0.8)
+		tween.tween_property(final_dish, "position", final_dish.position + Vector2(0, -50), 0.8)
+		tween.tween_property(final_dish, "scale", Vector2(0.2, 0.2), 0.8)
+	
+	# Also animate out the hidden ingredients
 	for ing in served_ingredients:
 		if is_instance_valid(ing):
-			# Fade out and move up
 			tween.tween_property(ing, "modulate:a", 0.0, 0.8)
-			tween.tween_property(ing, "position", ing.position + Vector2(0, -50), 0.8)
-			tween.tween_property(ing, "scale", Vector2(0.15, 0.15), 0.8)
 	
 	# Wait for animation to complete
 	await tween.finished
 	
 	# Clean up all ingredients
+	if final_dish and is_instance_valid(final_dish):
+		final_dish.queue_free()
+	
 	for ing in served_ingredients:
 		if is_instance_valid(ing):
 			ing.queue_free()
@@ -264,7 +295,7 @@ func _spawn_from_recipe_or_fallback() -> String:
 	if _gm == null:
 		_gm = get_tree().get_first_node_in_group("game_manager")
 	if _gm == null:
-		push_warning("[STATION] No GameManager found – cannot determine ingredient to spawn.")
+		push_warning("[STATION] No GameManager found — cannot determine ingredient to spawn.")
 		return ""
 
 	if _gm.has_method("next_base_item"):
@@ -293,5 +324,5 @@ func _spawn_from_recipe_or_fallback() -> String:
 		print("[STATION] Using fallback exported item:", spawn_item_when_interacted)
 		return spawn_item_when_interacted
 
-	push_warning("[STATION] No ingredients available to spawn – returning placeholder 'unknown_item'")
+	push_warning("[STATION] No ingredients available to spawn — returning placeholder 'unknown_item'")
 	return "unknown_item"
