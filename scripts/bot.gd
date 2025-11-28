@@ -238,7 +238,7 @@ func _place_on_station() -> void:
 		carried_item_type = ""
 		
 		current_action = Action.PROCESS_ITEM
-	else:
+	else: 
 		push_error("[BOT %d] Failed to place item" % bot_id)
 		current_action = Action.IDLE
 
