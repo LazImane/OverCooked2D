@@ -69,17 +69,17 @@ func interact() -> void:
 		if current_ingredient == null and current_item == "":
 			var gm = _ensure_gm()
 			if gm and gm.has_method("spawn_ingredient"):
-				var inst = gm.spawn_ingredient("", get_parent())  # parent = Game root
+				var inst = gm.spawn_ingredient(current_item, get_parent())  # Use current_item type
 				if inst:
 					_place_visual_on_station(inst)
 					# sync string type if available
 					if inst.has_method("get_type"):
-						current_item = inst.get("type")
-					elif inst.has_meta("type"):
-						current_item = String(inst.get_meta("type"))
+						current_item = inst.get_type()
+					elif "type" in inst:
+						current_item = inst.type
 					else:
-						# try name fallback
 						current_item = String(inst.name)
+					print("[STATION] Spawned ingredient:", current_item, "at", name)
 					update_appearance()
 		return
 
@@ -91,20 +91,21 @@ func interact() -> void:
 				current_ingredient.apply_stage(station_type)
 				# sync string type to remain compatible
 				if current_ingredient.has_method("get_type"):
-					current_item = current_ingredient.get("type")
+					current_item = current_ingredient.get_type()
+				elif "type" in current_ingredient:
+					current_item = current_ingredient.type
 				else:
-					# try reading a "type" property if present
-					if current_ingredient.has_meta("type"):
-						current_item = String(current_ingredient.get_meta("type"))
-					else:
-						current_item = String(current_ingredient.name)
-				# If the station is a Serving station, you may want to consume the item
+					current_item = String(current_ingredient.name)
+				
+				print("[STATION] Processed at", station_type, "->", current_item)
+				
+				# If the station is a Serving station, consume the item
 				if station_type == "Serving":
 					var to_free = current_ingredient
 					current_ingredient = null
 					current_item = ""
 					update_appearance()
-					await get_tree().create_timer(1.0).timeout
+					await get_tree().create_timer(0.5).timeout
 					if is_instance_valid(to_free):
 						to_free.queue_free()
 				update_appearance()
@@ -118,8 +119,7 @@ func interact() -> void:
 
 	# default fallback
 	print("[STATION] interact(): unknown station_type:", station_type)
-	if has_method("update_appearance"):
-		update_appearance()
+	update_appearance()
 
 # ------------------------
 # Transform helper for legacy string-only mode
@@ -137,6 +137,9 @@ func _transform_string_item() -> void:
 				var base := current_item.substr("chopped_".length())
 				current_item = "cooked_%s" % base
 				print("[STATION] Cooked ->", current_item, "on", name)
+			elif not current_item.begins_with("cooked_"):
+				current_item = "cooked_%s" % current_item
+				print("[STATION] Cooked ->", current_item, "on", name)
 		"Serving":
 			if _can_serve_current_item():
 				print("[STATION] Served:", current_item, "from", name)
@@ -146,30 +149,24 @@ func _transform_string_item() -> void:
 	update_appearance()
 
 # ------------------------
-# Visual-aware take/place
+# Visual-aware take/place - FIXED VERSION
 # ------------------------
-func take_item():
-	# prefer returning an Ingredient node if present
+func take_item() -> Node:
+	"""Remove and return the ingredient node"""
 	if current_ingredient != null and is_instance_valid(current_ingredient):
-		var tmp = current_ingredient
+		var item = current_ingredient
 		current_ingredient = null
 		current_item = ""
+		
+		# Remove from station's children
+		if item.get_parent() == self:
+			remove_child(item)
+		
+		print("[STATION] take_item() ->", item.name, "from", name)
 		update_appearance()
-		print("[STATION] take_item() ->", tmp.name, "from", name)
-		return tmp
-
-	# fallback to old string behavior
-	var tmp_str: String = current_item
-	if tmp_str != "":
-		current_item = ""
-		# free any stale visual
-		if current_ingredient and is_instance_valid(current_ingredient):
-			current_ingredient.queue_free()
-			current_ingredient = null
-		update_appearance()
-		print("[STATION] take_item() ->", tmp_str, "from", name)
-		return tmp_str
-
+		return item
+	
+	print("[STATION] take_item() -> null (nothing to take) from", name)
 	return null
 
 func place_item(it) -> bool:
@@ -177,19 +174,21 @@ func place_item(it) -> bool:
 	if current_ingredient == null and current_item == "":
 		if it == null:
 			return false
+		
 		# Node: reparent and set
 		if typeof(it) == TYPE_OBJECT and it is Node:
 			_place_visual_on_station(it)
 			# sync string if possible
 			if it.has_method("get_type"):
-				current_item = it.get("type")
-			elif it.has_meta("type"):
-				current_item = String(it.get_meta("type"))
+				current_item = it.get_type()
+			elif "type" in it:
+				current_item = it.type
 			else:
 				current_item = String(it.name)
 			update_appearance()
-			print("[STATION] place_item(node) on", name)
+			print("[STATION] place_item(node:", current_item, ") on", name)
 			return true
+		
 		# String: spawn a visual via GM if possible
 		else:
 			var gm = _ensure_gm()
@@ -199,13 +198,15 @@ func place_item(it) -> bool:
 					_place_visual_on_station(node)
 					current_item = String(it)
 					update_appearance()
-					print("[STATION] place_item(string->node) on", name)
+					print("[STATION] place_item(string->node:", current_item, ") on", name)
 					return true
 			# fallback to legacy string-only placement
 			current_item = String(it)
 			update_appearance()
-			print("[STATION] place_item(string) on", name)
+			print("[STATION] place_item(string:", current_item, ") on", name)
 			return true
+	
+	print("[STATION] place_item() FAILED - station occupied at", name)
 	return false
 
 # ------------------------
@@ -213,11 +214,9 @@ func place_item(it) -> bool:
 # ------------------------
 func update_appearance() -> void:
 	# Align the visual ingredient on the station and optionally change station's tint
-	# If the station has its own Sprite2D child, we modulate it for feedback
 	if current_ingredient != null and is_instance_valid(current_ingredient):
 		# ensure the ingredient sits centered on the station
 		if current_ingredient.get_parent() != self:
-			# already parented by place_item/_place_visual_on_station in most flows, but ensure
 			if current_ingredient.get_parent():
 				current_ingredient.get_parent().remove_child(current_ingredient)
 			add_child(current_ingredient)
@@ -246,27 +245,24 @@ func _ensure_gm() -> Node:
 	return _gm
 
 # ------------------------
-# existing helpers unchanged (recipe-based spawning etc.)
+# existing helpers unchanged
 # ------------------------
 func get_current_item() -> String:
 	return current_item
 
 func _spawn_from_recipe_or_fallback() -> String:
-	# 1) Ensure we have a reference to the GameManager
 	if _gm == null:
 		_gm = get_tree().get_first_node_in_group("game_manager")
 	if _gm == null:
 		push_warning("[STATION] No GameManager found — cannot determine ingredient to spawn.")
-		return ""  # no spawn possible
+		return ""
 
-	# 2) Try to use GameManager-provided helper
 	if _gm.has_method("next_base_item"):
 		var id := String(_gm.next_base_item())
 		if id != "":
 			print("[STATION] Spawned from GM.next_base_item():", id)
 			return id
 
-	# 3) Try reading directly from the current recipe
 	var current_recipe_id := "demo_salad"
 	if _gm.get("current_recipe_id") != "":
 		var rid_val = _gm.get("current_recipe_id")
@@ -283,34 +279,12 @@ func _spawn_from_recipe_or_fallback() -> String:
 			print("[STATION] Spawned from recipe '%s': %s" % [current_recipe_id, id2])
 			return id2
 
-	# 4) If we get here, try exported fallback — only if non-empty
 	if spawn_item_when_interacted != "":
 		print("[STATION] Using fallback exported item:", spawn_item_when_interacted)
 		return spawn_item_when_interacted
 
-	# 5) If absolutely nothing works, return a placeholder to avoid crash
 	push_warning("[STATION] No ingredients available to spawn — returning placeholder 'unknown_item'")
 	return "unknown_item"
-
-func _gm_get_allowed_base_items() -> Array:
-	if _gm == null:
-		_gm = get_tree().get_first_node_in_group("game_manager")
-	if _gm == null:
-		return []
-
-	var rid_val = _gm.get("current_recipe_id")
-	var rid: String = String(rid_val) if typeof(rid_val) == TYPE_STRING else "demo_salad"
-
-	var recipes_val = _gm.get("recipes")
-	if typeof(recipes_val) != TYPE_DICTIONARY:
-		return []
-
-	var rec: Dictionary = (recipes_val.get(rid, Dictionary())) as Dictionary
-	if typeof(rec) != TYPE_DICTIONARY:
-		return []
-
-	var items: Array = (rec.get("base_items", Array())) as Array
-	return items
 
 func _required_stage_for_serving() -> String:
 	if _gm == null:

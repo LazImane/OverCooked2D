@@ -1,0 +1,21 @@
+[gd_scene load_steps=4 format=3 uid="uid://idiup7kobtsy"]
+
+[ext_resource type="Script" uid="uid://bs5763pl5cogu" path="res://scripts/bot.gd" id="1_qpkb6"]
+[ext_resource type="Texture2D" uid="uid://dwgs04fxuldbi" path="res://assets/food and kitchenware icons/chef.png" id="2_hhacj"]
+
+[sub_resource type="CapsuleShape2D" id="CapsuleShape2D_eow3j"]
+radius = 7.0
+height = 20.0
+
+[node name="Bot" type="CharacterBody2D"]
+script = ExtResource("1_qpkb6")
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="."]
+position = Vector2(2, -2)
+shape = SubResource("CapsuleShape2D_eow3j")
+
+[node name="Sprite2D" type="Sprite2D" parent="."]
+scale = Vector2(0.12900004, 0.103999995)
+texture = ExtResource("2_hhacj")
+
+[node name="NavigationAgent2D" type="NavigationAgent2D" parent="."]
