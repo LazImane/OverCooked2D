@@ -1,4 +1,4 @@
-[gd_scene load_steps=22 format=3 uid="uid://cqet8q2suopqs"]
+[gd_scene load_steps=22 format=3 uid="uid://bfksb6w8ep7oq"]
 
 [ext_resource type="Texture2D" uid="uid://dpa6d8byrp3t7" path="res://assets/pixelinterior_LRK/floorswalls_LRK.png" id="1_vtaks"]
 [ext_resource type="Texture2D" uid="uid://ddldpwcweumie" path="res://assets/pixelinterior_LRK/kitchen_LRK.png" id="2_kvpfn"]
@@ -9,7 +9,7 @@
 [ext_resource type="Texture2D" uid="uid://b8yn60qytcmhe" path="res://assets/ingredients/tomato.png" id="7_dinhu"]
 [ext_resource type="Script" uid="uid://cvml5oqa28lqg" path="res://scripts/GameManager.gd" id="8_rysoc"]
 [ext_resource type="PackedScene" uid="uid://c7l5kdaoo8o82" path="res://scenes/ingredient.tscn" id="9_kvpfn"]
-[ext_resource type="PackedScene" uid="uid://idiup7kobtsy" path="res://scenes/bot.tscn" id="10_vtaks"]
+[ext_resource type="PackedScene" uid="uid://bauxqcvvm732b" path="res://scenes/bot.tscn" id="10_vtaks"]
 
 [sub_resource type="TileSetAtlasSource" id="TileSetAtlasSource_fc0e3"]
 texture = ExtResource("1_vtaks")
@@ -1658,9 +1658,10 @@ station_type = "Serving"
 position = Vector2(7, 3)
 shape = SubResource("RectangleShape2D_7jktm")
 
-[node name="GameManager" type="Node" parent="."]
+[node name="GameManager" type="Node" parent="." node_paths=PackedStringArray("time_label")]
 script = ExtResource("8_rysoc")
 ingredient_scene = ExtResource("9_kvpfn")
+time_label = NodePath("../CanvasLayer/Label")
 
 [node name="Bot" parent="." instance=ExtResource("10_vtaks")]
 position = Vector2(1, 90)
@@ -1676,3 +1677,9 @@ zoom = Vector2(2.3, 2.3)
 [node name="Bot3" parent="." instance=ExtResource("10_vtaks")]
 collision_layer = 4
 bot_id = 3
+
+[node name="CanvasLayer" type="CanvasLayer" parent="."]
+
+[node name="Label" type="Label" parent="CanvasLayer"]
+offset_right = 40.0
+offset_bottom = 23.0

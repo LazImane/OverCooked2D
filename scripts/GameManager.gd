@@ -2,10 +2,12 @@ extends Node
 # GameManager: Manages recipes, ingredients, and bot task assignment
 
 @export var ingredient_scene: PackedScene = null
+@export var time_label: Label 
 
 var recipes: Dictionary = {}
 var ingredients: Dictionary = {}
 var stations_by_type: Dictionary = {}
+var elapsed_time = 0 
 
 # Recipe execution tracking
 var current_recipe_id: String = "demo_salad"
@@ -148,3 +150,6 @@ func spawn_ingredient(type: String = "", parent_node: Node = null) -> Node:
 	_spawn_idx += 1
 	
 	return instance
+func _process(delta):
+	elapsed_time += delta
+	time_label.text = " time elapsed : " + str(int(elapsed_time))
