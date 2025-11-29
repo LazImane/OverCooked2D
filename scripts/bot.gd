@@ -48,10 +48,22 @@ func _ready() -> void:
 		set_physics_process(false)
 		return
 	
+	# NEW: Connect to the new orders signal
+	if _gm.has_signal("new_orders_available"):
+		_gm.connect("new_orders_available", _on_new_orders_available)
+	
 	_find_stations()
 	_request_next_task()
 	
 	print("[BOT %d] Ready | Default recipe: %s" % [bot_id, recipe_name])
+
+
+# NEW: Add this callback function somewhere in bot.gd:
+func _on_new_orders_available() -> void:
+	# If bot is idle, wake up and request a new task
+	if current_action == Action.IDLE:
+		print("[BOT %d] New orders available! Requesting task..." % bot_id)
+		_request_next_task()
 
 func _physics_process(delta: float) -> void:
 	match current_action:
