@@ -8,40 +8,102 @@ var _scale_override: Vector2 = Vector2.ZERO
 @onready var sprite: Sprite2D = $Sprite2D
 
 const ICONS := {
+	# Base ingredients
 	"tomato": preload("res://assets/ingredients/tomato.png"),
-	"chopped_tomato": preload("res://assets/ingredients/chopped_tomato.png"),
-	"chopped_lettuce": preload("res://assets/ingredients/chopped_lettuce.png"),
-	"chopped_cucumber": preload("res://assets/ingredients/chopped_cucumber.png"),
-	"chopped_olives": preload("res://assets/ingredients/chopped_olives.png"),
-	"chopped_olive": preload("res://assets/ingredients/chopped_olives.png"),  # Alias for single olive
-	"cooked_tomato": preload("res://assets/ingredients/pot.png"),
-	"cooked_olives": preload("res://assets/ingredients/chopped_olives.png"),  # You can change this if you have a different cooked olive icon
-	"cooked_olive": preload("res://assets/ingredients/chopped_olives.png"),  # Alias
-	"tomato_soup": preload("res://assets/ingredients/tomato_soup.png"),
 	"lettuce": preload("res://assets/ingredients/lettuce.png"),
 	"cucumber": preload("res://assets/ingredients/cucumber.png"),
 	"olives": preload("res://assets/ingredients/olives.png"),
 	"olive": preload("res://assets/ingredients/olives.png"),
-	"salad": preload("res://assets/ingredients/salad.png")
+	"potato": preload("res://assets/ingredients/potato.png"),
+	"carrot": preload("res://assets/ingredients/carrot.png"),
+	"onion": preload("res://assets/ingredients/onion.png"),
+	"cheese": preload("res://assets/ingredients/cheese.png"),
+	"broccoli": preload("res://assets/ingredients/broccoli.png"),
+	
+	# Chopped ingredients
+	"chopped_tomato": preload("res://assets/ingredients/chopped_tomato.png"),
+	"chopped_lettuce": preload("res://assets/ingredients/chopped_lettuce.png"),
+	"chopped_cucumber": preload("res://assets/ingredients/chopped_cucumber.png"),
+	"chopped_olives": preload("res://assets/ingredients/chopped_olives.png"),
+	"chopped_olive": preload("res://assets/ingredients/chopped_olives.png"),
+	"chopped_potato": preload("res://assets/ingredients/chopped_potato.png"),
+	"chopped_carrot": preload("res://assets/ingredients/chopped_carrots.png"),
+	"chopped_onion": preload("res://assets/ingredients/chopped_onions.png"),
+	"chopped_cheese": preload("res://assets/ingredients/chopped_cheese.png"),
+	"chopped_broccoli": preload("res://assets/ingredients/broccoli.png"),
+	
+	# Cooked ingredients
+	"cooked_tomato": preload("res://assets/ingredients/pot.png"),
+	"cooked_olives": preload("res://assets/ingredients/chopped_olives.png"),
+	"cooked_olive": preload("res://assets/ingredients/chopped_olives.png"),
+	"cooked_potato": preload("res://assets/ingredients/pot.png"),
+	"cooked_carrot": preload("res://assets/ingredients/pot.png"),
+	"cooked_onion": preload("res://assets/ingredients/pot.png"),
+	"cooked_broccoli": preload("res://assets/ingredients/pot.png"),
+	"cooked_veggies": preload("res://assets/ingredients/cooked_veggies.png"),
+	
+	# Final dishes (using recipe names as keys)
+	"tomato_soup": preload("res://assets/ingredients/tomato_soup.png"),
+	"greek_salad": preload("res://assets/ingredients/salad.png"),
+	"salad": preload("res://assets/ingredients/salad.png"),
+	"Veggie Stir Fry": preload("res://assets/ingredients/veggies_stir_fry.png"),
+	"veggie_stir_fry": preload("res://assets/ingredients/veggies_stir_fry.png"),
+	"Caesar Salad": preload("res://assets/ingredients/caesar_salad.png"),
+	"caesar_salad": preload("res://assets/ingredients/caesar_salad.png"),
+	"Garden Salad": preload("res://assets/ingredients/garden_salad.png"),
+	"garden_salad": preload("res://assets/ingredients/garden_salad.png"),
+	"Potato Soup": preload("res://assets/ingredients/potato_soup.png"),
+	"potato_soup": preload("res://assets/ingredients/potato_soup.png"),
 }
 
-# Scale adjustments per texture (relative to base scale)
+# Scale adjustments per texture (relative to base scale of 0.1)
 const TEXTURE_SCALES := {
-	"tomato": 1.0,              # Tomatoes are already good size
-	"chopped_tomato": 1.0,
-	"cooked_tomato": 1.0,
-	"tomato_soup": 1.0,
-	"lettuce": 0.7,             # Lettuce is too big
-	"chopped_lettuce": 0.7,
-	"cucumber": 0.7,            # Cucumber is too big
-	"chopped_cucumber": 0.7,
-	"olives": 0.8,              # Olives slightly too big
+	# Base ingredients
+	"tomato": 1.0,
+	"lettuce": 0.7,
+	"cucumber": 0.7,
+	"olives": 0.8,
 	"olive": 0.8,
+	"potato": 0.9,
+	"carrot": 0.8,
+	"onion": 0.8,
+	"cheese": 0.7,
+	"broccoli": 0.8,
+	
+	# Chopped
+	"chopped_tomato": 1.0,
+	"chopped_lettuce": 0.7,
+	"chopped_cucumber": 0.7,
 	"chopped_olives": 0.8,
 	"chopped_olive": 0.8,
+	"chopped_potato": 0.9,
+	"chopped_carrot": 0.6,
+	"chopped_onion": 0.8,
+	"chopped_cheese": 0.7,
+	"chopped_broccoli": 0.8,
+	
+	# Cooked
+	"cooked_tomato": 1.0,
 	"cooked_olives": 0.8,
 	"cooked_olive": 0.8,
-	"salad": 1.0                # Final salad
+	"cooked_potato": 1.0,
+	"cooked_carrot": 1.0,
+	"cooked_onion": 1.0,
+	"cooked_broccoli": 1.0,
+	"cooked_veggies": 1.0,
+	
+	# Final dishes
+	"tomato_soup": 1.0,
+	"greek_salad": 0.5,
+	"salad": 0.5,
+	"Veggie Stir Fry": 1.0,
+	"veggie_stir_fry": 1.0,
+	"Caesar Salad": 0.5,
+	"caesar_salad": 0.5,
+	"Garden Salad": 0.5,
+	"garden_salad": 0.5,
+	"Potato Soup": 1.0,
+	"potato_soup": 1.0,
 }
 
 func _ready() -> void:
@@ -59,7 +121,7 @@ func set_type(t: String) -> void:
 		status = "chopped"
 	elif type.begins_with("cooked_"):
 		status = "cooked"
-	elif type.ends_with("_soup") or type == "salad":
+	elif type.ends_with("_soup") or type.ends_with("salad") or type.ends_with("Salad") or type.ends_with("Stir Fry"):
 		status = "served"
 	else:
 		status = "raw"

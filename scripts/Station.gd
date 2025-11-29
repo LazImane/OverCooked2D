@@ -228,6 +228,11 @@ func _check_recipe_completion(recipe_id: String) -> void:
 	
 	if current_count >= required_ingredients.size() and required_ingredients.size() > 0:
 		print("[STATION] 🎉 Recipe '%s' complete! Showing final dish..." % recipe_id)
+		
+		# Notify GameManager that recipe is complete (stop timer)
+		if gm.has_method("_complete_recipe_timer"):
+			gm._complete_recipe_timer(recipe_id)
+		
 		_show_final_dish(recipe_id)
 
 func _show_final_dish(recipe_id: String) -> void:
@@ -242,12 +247,24 @@ func _show_final_dish(recipe_id: String) -> void:
 		if is_instance_valid(ing) and ing.has_node("Sprite2D"):
 			ing.get_node("Sprite2D").visible = false
 	
-	# Determine which dish to show based on the actual recipe_id
-	var dish_type = "salad"  # Default
-	if recipe_id == "tomato_soup":
-		dish_type = "tomato_soup"
-	elif recipe_id == "demo_salad":
-		dish_type = "salad"
+	# Map recipe_id to the correct dish type
+	var dish_type = "salad"  # Default fallback
+	match recipe_id:
+		"tomato_soup":
+			dish_type = "tomato_soup"
+		"demo_salad":
+			dish_type = "greek_salad"
+		"veggie_stir_fry":
+			dish_type = "veggie_stir_fry"
+		"caesar_salad":
+			dish_type = "caesar_salad"
+		"potato_soup":
+			dish_type = "potato_soup"
+		"garden_salad":
+			dish_type = "garden_salad"
+		_:
+			# Fallback: use recipe_id as-is
+			dish_type = recipe_id
 	
 	# Create a new ingredient node to show the final dish
 	var gm = _ensure_gm()

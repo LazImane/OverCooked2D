@@ -6,7 +6,8 @@ enum Action {
 	MOVE,
 	TAKE_INGREDIENT,
 	PLACE_ITEM,
-	PROCESS_ITEM
+	PROCESS_ITEM,
+	WAIT_FOR_STATION  # New state for waiting
 }
 
 @export var bot_id: int = 1
@@ -32,6 +33,10 @@ var carried_item_type: String = ""
 var current_action: Action = Action.IDLE
 var target_position: Vector2 = Vector2.ZERO
 var target_station: Node = null
+var wait_timer: float = 0.0
+var max_wait_time: float = 2.0  # Maximum time to wait for station
+var retry_count: int = 0
+var max_retries: int = 3
 
 @onready var sprite = $Sprite2D
 
@@ -66,6 +71,9 @@ func _physics_process(delta: float) -> void:
 		
 		Action.PROCESS_ITEM:
 			_process_at_station()
+		
+		Action.WAIT_FOR_STATION:
+			_wait_for_station(delta)
 	
 	if sprite and velocity.x != 0:
 		sprite.flip_h = velocity.x < 0
@@ -82,6 +90,7 @@ func _request_next_task() -> void:
 	var result = _gm.request_next_ingredient(bot_id)
 	current_recipe_id = ""
 	current_ingredient = ""
+	retry_count = 0  # Reset retry count for new task
 	
 	# New protocol: GameManager returns a Dictionary { recipe_id, ingredient_id }
 	if typeof(result) == TYPE_DICTIONARY:
@@ -93,7 +102,7 @@ func _request_next_task() -> void:
 		current_ingredient = str(result) if result != null else ""
 	
 	if current_ingredient == "":
-		print("[BOT %d] ✅ No more tasks - all done!" % bot_id)
+		print("[BOT %d] No more tasks - all done!" % bot_id)
 		current_action = Action.IDLE
 		return
 	
@@ -107,7 +116,7 @@ func _request_next_task() -> void:
 	else:
 		flow_steps = ["Ingredient", "Chopping", "Serving"]
 	
-	print("[BOT %d] 📋 Task: %s | Recipe: %s | Flow: %s" %
+	print("[BOT %d] Task: %s | Recipe: %s | Flow: %s" %
 		[bot_id, current_ingredient, flow_recipe_id, flow_steps])
 	
 	_go_to_next_step()
@@ -155,6 +164,8 @@ func _on_arrived_at_station() -> void:
 			else:
 				current_action = Action.PROCESS_ITEM
 
+# Replace ONLY the _take_from_station() function in your original bot.gd:
+
 func _take_from_station() -> void:
 	if not target_station:
 		_go_to_next_step()
@@ -164,7 +175,14 @@ func _take_from_station() -> void:
 	
 	# Ingredient station: spawn from GameManager and immediately take it
 	if station_type == "Ingredient":
-		print("[BOT %d] 🏭 Spawning %s at Ingredient station" % [bot_id, current_ingredient])
+		# Check if station is occupied
+		if target_station.has_method("has_ingredient") and target_station.has_ingredient():
+			print("[BOT %d] Station occupied, waiting..." % bot_id)
+			wait_timer = 0.0
+			current_action = Action.WAIT_FOR_STATION
+			return
+		
+		print("[BOT %d] Spawning %s at Ingredient station" % [bot_id, current_ingredient])
 		
 		if _gm and _gm.has_method("spawn_ingredient"):
 			var item_node = _gm.spawn_ingredient(current_ingredient, target_station.get_parent())
@@ -172,48 +190,106 @@ func _take_from_station() -> void:
 			if item_node:
 				if target_station.has_method("place_item"):
 					if target_station.place_item(item_node):
-						print("[BOT %d] 📦 Ingredient spawned and placed on station" % bot_id)
+						print("[BOT %d] Ingredient spawned and placed on station" % bot_id)
 						
 						# Now take it immediately (small delay for visuals)
 						await get_tree().create_timer(0.1).timeout
+						
+						# CRITICAL FIX: Check if item still exists before taking
+						if not target_station.has_ingredient():
+							print("[BOT %d] Item disappeared, waiting for next chance..." % bot_id)
+							wait_timer = 0.0
+							current_action = Action.WAIT_FOR_STATION
+							return
+						
 						var taken_item = _take_item_node_from(target_station)
 						if taken_item:
 							carried_item = taken_item
 							carried_item_type = current_ingredient
 							_pickup_item_visual(taken_item)
-							print("[BOT %d] 📦 Took: %s" % [bot_id, current_ingredient])
+							print("[BOT %d] Took: %s" % [bot_id, current_ingredient])
+							retry_count = 0
 							current_step += 1
 							_go_to_next_step()
 						else:
-							push_error("[BOT %d] Failed to take spawned ingredient" % bot_id)
-							current_action = Action.IDLE
+							print("[BOT %d] Failed to take, retrying..." % bot_id)
+							_handle_station_failure()
 					else:
-						push_error("[BOT %d] Failed to place spawned ingredient" % bot_id)
+						# Station occupied - clean up and wait
+						print("[BOT %d] Failed to place - station busy, cleaning up..." % bot_id)
 						item_node.queue_free()
-						current_action = Action.IDLE
+						wait_timer = 0.0
+						current_action = Action.WAIT_FOR_STATION
 				else:
 					push_error("[BOT %d] Station missing place_item method" % bot_id)
 					item_node.queue_free()
-					current_action = Action.IDLE
+					_handle_station_failure()
 			else:
 				push_error("[BOT %d] Failed to spawn ingredient" % bot_id)
-				current_action = Action.IDLE
+				_handle_station_failure()
 		else:
 			push_error("[BOT %d] GameManager missing spawn_ingredient method" % bot_id)
-			current_action = Action.IDLE
+			_handle_station_failure()
 		return
 	
 	# Chopping / Cooking: take processed item
+	if target_station.has_method("has_ingredient") and not target_station.has_ingredient():
+		print("[BOT %d] No item ready at station, waiting..." % bot_id)
+		wait_timer = 0.0
+		current_action = Action.WAIT_FOR_STATION
+		return
+	
 	var item_node = _take_item_node_from(target_station)
 	if item_node:
 		carried_item = item_node
 		_pickup_item_visual(item_node)
-		print("[BOT %d] 📦 Took processed item" % bot_id)
+		print("[BOT %d] Took processed item" % bot_id)
+		retry_count = 0
 		current_step += 1
 		_go_to_next_step()
 	else:
-		push_error("[BOT %d] Failed to take from %s" % [bot_id, station_type])
-		current_action = Action.IDLE
+		print("[BOT %d] Failed to take from %s, retrying..." % [bot_id, station_type])
+		_handle_station_failure()
+		
+func _wait_for_station(delta: float) -> void:
+	"""Wait for a station to become available"""
+	_stop(delta)
+	wait_timer += delta
+	
+	if wait_timer >= max_wait_time:
+		retry_count += 1
+		if retry_count >= max_retries:
+			push_error("[BOT %d] Station timeout after %d retries, skipping task" % [bot_id, max_retries])
+			# Skip this task and get a new one
+			_request_next_task()
+		else:
+			print("[BOT %d] Retry %d/%d - attempting station again" % [bot_id, retry_count, max_retries])
+			wait_timer = 0.0
+			current_action = Action.TAKE_INGREDIENT
+	else:
+		# Periodically retry
+		if fmod(wait_timer, 0.5) < delta:  # Check every 0.5 seconds
+			var station_type: String = flow_steps[current_step]
+			if station_type == "Ingredient":
+				if not target_station.has_ingredient():
+					print("[BOT %d] Station free, retrying..." % bot_id)
+					current_action = Action.TAKE_INGREDIENT
+			else:
+				if target_station.has_ingredient():
+					print("[BOT %d] Item ready, retrying..." % bot_id)
+					current_action = Action.TAKE_INGREDIENT
+
+
+func _handle_station_failure() -> void:
+	"""Handle failure to interact with station"""
+	retry_count += 1
+	if retry_count >= max_retries:
+		push_error("[BOT %d] Failed after %d retries, requesting new task" % [bot_id, max_retries])
+		_request_next_task()
+	else:
+		print("[BOT %d] Retry %d/%d after failure" % [bot_id, retry_count, max_retries])
+		wait_timer = 0.0
+		current_action = Action.WAIT_FOR_STATION
 
 
 func _place_on_station() -> void:
@@ -221,8 +297,16 @@ func _place_on_station() -> void:
 		_go_to_next_step()
 		return
 	
-	# Pass recipe_id to serving station
+	# Check if station is available (for non-serving stations)
 	var station_type: String = flow_steps[current_step]
+	if station_type != "Serving":
+		if target_station.has_method("has_ingredient") and target_station.has_ingredient():
+			print("[BOT %d] Station occupied, waiting to place..." % bot_id)
+			wait_timer = 0.0
+			current_action = Action.WAIT_FOR_STATION
+			return
+	
+	# Pass recipe_id to serving station
 	var success := false
 	
 	if station_type == "Serving" and target_station.has_method("place_item"):
@@ -233,14 +317,15 @@ func _place_on_station() -> void:
 		success = _place_item_node_on(target_station, carried_item)
 	
 	if success:
-		print("[BOT %d] 📥 Placed on %s (recipe: %s)" % [bot_id, station_type, current_recipe_id])
+		print("[BOT %d] Placed on %s (recipe: %s)" % [bot_id, station_type, current_recipe_id])
 		carried_item = null
 		carried_item_type = ""
+		retry_count = 0  # Reset retry count on success
 		
 		current_action = Action.PROCESS_ITEM
-	else: 
+	else:
 		push_error("[BOT %d] Failed to place item" % bot_id)
-		current_action = Action.IDLE
+		_handle_station_failure()
 
 func _process_at_station() -> void:
 	if not target_station:
@@ -255,7 +340,7 @@ func _process_at_station() -> void:
 		if _gm and _gm.has_method("notify_served"):
 			_gm.notify_served(current_ingredient)
 		
-		print("[BOT %d] ✅ Placed on serving station: %s" % [bot_id, current_ingredient])
+		print("[BOT %d] Placed on serving station: %s" % [bot_id, current_ingredient])
 		carried_item = null
 		carried_item_type = ""
 		current_step += 1
@@ -269,12 +354,13 @@ func _process_at_station() -> void:
 	if item_node:
 		carried_item = item_node
 		_pickup_item_visual(item_node)
-		print("[BOT %d] ⚙️ Processed at %s" % [bot_id, station_type])
+		print("[BOT %d] Processed at %s" % [bot_id, station_type])
+		retry_count = 0  # Reset retry count on success
 		current_step += 1
 		_go_to_next_step()
 	else:
 		push_error("[BOT %d] Failed to take processed item" % bot_id)
-		current_action = Action.IDLE
+		_handle_station_failure()
 
 # ==================== MOVEMENT ====================
 func _move_toward_target(delta: float) -> void:
