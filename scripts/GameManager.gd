@@ -342,27 +342,32 @@ func spawn_ingredient(type: String = "", parent_node: Node = null) -> Node:
 
 func _process(delta):
 	_current_time += delta
+	var elapsed_time = "TOTAL TIME ELAPSED: %.2fs\n" % [(_current_time)]
 	
 	if active_recipe_timers.size() > 0:
 		var display_text = "🍳 Active Orders:\n"
 		for recipe_id in active_recipe_timers.keys():
 			var elapsed = _current_time - active_recipe_timers[recipe_id]
 			var recipe_name = recipes[recipe_id]["name"]
-			display_text += "%s: %.1fs  " % [recipe_name, elapsed]
+			display_text +=  "%s: %.1fs  " % [recipe_name, elapsed]
 		
 		if endless_mode:
 			display_text += "\n📊 Completed: %d" % _orders_completed
 		
-		time_label.text = display_text
+		time_label.text = elapsed_time + display_text
 	else:
 		if endless_mode:
-			time_label.text = "⏳ Waiting for orders...\n📊 Completed: %d" % _orders_completed
+			time_label.text = elapsed_time + "⏳ Waiting for orders...\n📊 Completed: %d" % _orders_completed
 		else:
-			time_label.text = "⏳ Waiting for orders..."
+			time_label.text = elapsed_time+ "⏳ Waiting for orders..."
 	
 	if not endless_mode and completed_recipes.size() == orders.size() and orders.size() > 0:
 		var scores_text = "🎉 ALL COMPLETED!\n\nScores:\n"
 		for completion in completed_recipes:
 			var recipe_name = recipes[completion["recipe_id"]]["name"]
 			scores_text += "%s: %.2fs\n" % [recipe_name, completion["score"]]
-		time_label.text = scores_text
+		time_label.text = elapsed_time + scores_text
+	stats(); 
+func stats(): 
+	if(_current_time >= 120.0):
+		print("IN 120 SECONDS(2mins) WE MADE %d recipes " % completed_recipes.size() ); 

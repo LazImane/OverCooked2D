@@ -1684,3 +1684,7 @@ bot_id = 3
 [node name="Label" type="Label" parent="CanvasLayer"]
 offset_right = 40.0
 offset_bottom = 23.0
+
+[node name="Label2" type="Label" parent="CanvasLayer"]
+offset_right = 40.0
+offset_bottom = 23.0

@@ -294,12 +294,19 @@ func _serve_complete_dish(recipe_id: String, final_dish: Node = null) -> void:
 		tween.tween_property(final_dish, "scale", Vector2(0.2, 0.2), 0.8)
 	
 	# Also animate out the hidden ingredients for this recipe
-	for ing in served_ingredients[recipe_id]:
-		if is_instance_valid(ing):
-			tween.tween_property(ing, "modulate:a", 0.0, 0.8)
+	# SAFETY CHECK: Make sure the recipe still exists before iterating
+	if served_ingredients.has(recipe_id):
+		for ing in served_ingredients[recipe_id]:
+			if is_instance_valid(ing):
+				tween.tween_property(ing, "modulate:a", 0.0, 0.8)
 	
 	# Wait for animation to complete
 	await tween.finished
+	
+	# CRITICAL: Check again after the async wait!
+	if not served_ingredients.has(recipe_id):
+		print("[STATION] Recipe '%s' was already cleaned up, skipping..." % recipe_id)
+		return
 	
 	# Clean up all ingredients for this recipe
 	if final_dish and is_instance_valid(final_dish):
@@ -318,7 +325,6 @@ func _serve_complete_dish(recipe_id: String, final_dish: Node = null) -> void:
 	update_appearance()
 	
 	print("[STATION] ✅ Dish '%s' served to customer!" % recipe_id)
-
 func update_appearance() -> void:
 	if has_node("Sprite2D"):
 		if has_ingredient():
