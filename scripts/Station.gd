@@ -2,9 +2,10 @@ extends Area2D
 
 @export var station_type: String = "Ingredient"
 signal station_processed(ingredient_name: String, new_status: String)
-
+var reserved_by: int = -1  
 var current_item: String = ""
 @export var spawn_item_when_interacted: String = ""
+@export var station_id: int = -1
 
 # For serving station: track ingredients by recipe
 var served_ingredients: Dictionary = {}  # { recipe_id: [ingredient_nodes] }
@@ -144,6 +145,9 @@ func place_item(it, recipe_id: String = "") -> bool:
 
 func has_ingredient() -> bool:
 	"""Check if station has any ingredients"""
+	if reserved_by != -1:
+		return true
+
 	if station_type == "Serving":
 		for recipe_ingredients in served_ingredients.values():
 			if recipe_ingredients.size() > 0:
