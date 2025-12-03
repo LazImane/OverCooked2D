@@ -5,8 +5,8 @@ extends Node
 @export var time_label: Label 
 @export var endless_mode: bool = true
 @export var order_delay: float = 2.0
+@export var min_active_orders: int = 3  # NEW: Keep at least 3 orders active
 
-# NEW: Signal to notify bots when new orders are available
 signal new_orders_available
 
 var recipes: Dictionary = {}
@@ -22,6 +22,10 @@ var _served_count: int = 0
 var _spawn_idx: int = 0
 var _current_time: float = 0.0
 var _orders_completed: int = 0
+
+# NEW: Track orders by status
+var _pending_orders: int = 0
+var _in_progress_orders: int = 0
 
 
 func _ready() -> void:
@@ -55,11 +59,13 @@ func _complete_recipe_timer(recipe_id: String) -> float:
 	
 	active_recipe_timers.erase(recipe_id)
 	_orders_completed += 1
+	_in_progress_orders -= 1
+	
 	print("[GM] ✅ Recipe '%s' completed in %.2f seconds! (Total completed: %d)" % 
 		[recipe_id, completion_time, _orders_completed])
 	
+	# NEW: Immediately spawn replacement order (no delay)
 	if endless_mode:
-		await get_tree().create_timer(order_delay).timeout
 		_spawn_new_order()
 	
 	return completion_time
@@ -73,8 +79,8 @@ func _spawn_new_order() -> void:
 	var old_size = orders.size()
 	_add_random_order()
 	_rebuild_order_queue_incremental(old_size)
+	_pending_orders += 1
 	
-	# NEW: Notify all idle bots that new work is available
 	emit_signal("new_orders_available")
 	
 	print("[GM] 📋 New order added! Active orders: %d, Queue size: %d" % [orders.size(), _order_queue.size()])
@@ -105,7 +111,8 @@ func _setup_recipes() -> void:
 		"carrot": {"id": "carrot", "name": "Carrot", "status": "raw"},
 		"potato": {"id": "potato", "name": "Potato", "status": "raw"},
 		"onion": {"id": "onion", "name": "Onion", "status": "raw"},
-		"cheese": {"id": "cheese", "name": "Cheese", "status": "raw"}
+		"cheese": {"id": "cheese", "name": "Cheese", "status": "raw"},
+		"broccoli": {"id": "broccoli", "name": "Broccoli", "status": "raw"}
 	}
 	
 	recipes = {
@@ -148,16 +155,21 @@ func _setup_recipes() -> void:
 # ==================== ORDER LIST SETUP ====================
 func _setup_orders() -> void:
 	orders.clear()
+	_pending_orders = 0
+	_in_progress_orders = 0
 
 	if endless_mode:
-		_add_random_order()
-		_add_random_order()
+		# NEW: Start with min_active_orders to keep bots busy
+		for i in range(min_active_orders):
+			_add_random_order()
+			_pending_orders += 1
 	else:
 		_add_order("demo_salad")
 		_add_order("tomato_soup")
 		_add_order("veggie_stir_fry")
 		_add_order("caesar_salad")
 		_add_order("potato_soup")
+		_pending_orders = orders.size()
 
 	if orders.size() > 0:
 		current_recipe_id = orders[0]["recipe_id"]
@@ -232,6 +244,13 @@ func _prepare_recipe_order(recipe_id: String) -> void:
 
 # ==================== BOT TASK ASSIGNMENT ====================
 func request_next_ingredient(bot_id: int) -> Dictionary:
+	# NEW: Proactively spawn more orders if queue is getting low
+	if endless_mode:
+		var active_orders = _pending_orders + _in_progress_orders
+		if active_orders < min_active_orders:
+			print("[GM] 🔄 Queue low, spawning additional order (active: %d)" % active_orders)
+			_spawn_new_order()
+	
 	if _order_queue.is_empty():
 		print("[GM] No more ingredients available for bot %d" % bot_id)
 		return {}
@@ -245,9 +264,11 @@ func request_next_ingredient(bot_id: int) -> Dictionary:
 		orders[order_index]["status"] = "in_progress"
 		orders[order_index]["start_time"] = _current_time
 		_start_recipe_timer(recipe_id)
+		_pending_orders -= 1
+		_in_progress_orders += 1
 	
-	print("[GM] Assigned '%s' (%s) to bot %d (%d remaining in global queue)" %
-		[ingredient_id, recipe_id, bot_id, _order_queue.size()])
+	print("[GM] Assigned '%s' (%s) to bot %d (%d remaining | %d pending | %d in progress)" %
+		[ingredient_id, recipe_id, bot_id, _order_queue.size(), _pending_orders, _in_progress_orders])
 	return task
 
 
@@ -342,24 +363,24 @@ func spawn_ingredient(type: String = "", parent_node: Node = null) -> Node:
 
 func _process(delta):
 	_current_time += delta
-	var elapsed_time = "TOTAL TIME ELAPSED: %.2fs\n" % [(_current_time)]
+	var elapsed_time = "TOTAL TIME: %.2fs\n" % _current_time
 	
 	if active_recipe_timers.size() > 0:
 		var display_text = "🍳 Active Orders:\n"
 		for recipe_id in active_recipe_timers.keys():
 			var elapsed = _current_time - active_recipe_timers[recipe_id]
 			var recipe_name = recipes[recipe_id]["name"]
-			display_text +=  "%s: %.1fs  " % [recipe_name, elapsed]
+			display_text += "%s: %.1fs  " % [recipe_name, elapsed]
 		
 		if endless_mode:
-			display_text += "\n📊 Completed: %d" % _orders_completed
+			display_text += "\n📊 Completed: %d | Pending: %d" % [_orders_completed, _pending_orders]
 		
 		time_label.text = elapsed_time + display_text
 	else:
 		if endless_mode:
 			time_label.text = elapsed_time + "⏳ Waiting for orders...\n📊 Completed: %d" % _orders_completed
 		else:
-			time_label.text = elapsed_time+ "⏳ Waiting for orders..."
+			time_label.text = elapsed_time + "⏳ Waiting for orders..."
 	
 	if not endless_mode and completed_recipes.size() == orders.size() and orders.size() > 0:
 		var scores_text = "🎉 ALL COMPLETED!\n\nScores:\n"
@@ -367,7 +388,9 @@ func _process(delta):
 			var recipe_name = recipes[completion["recipe_id"]]["name"]
 			scores_text += "%s: %.2fs\n" % [recipe_name, completion["score"]]
 		time_label.text = elapsed_time + scores_text
-	stats(); 
+	
+	stats()
+
 func stats(): 
-	if(_current_time >= 120.0):
-		print("IN 120 SECONDS(2mins) WE MADE %d recipes " % completed_recipes.size() ); 
+	if _current_time >= 120.0:
+		print("IN 120 SECONDS (2mins) WE MADE %d recipes" % completed_recipes.size())

@@ -109,7 +109,7 @@ func place_item(it, recipe_id: String = "") -> bool:
 	if station_type == "Serving":
 		if typeof(it) == TYPE_OBJECT and it is Node:
 			_add_ingredient_to_serving(it, recipe_id)
-			print("[STATION] 🍽️ Added to serving station (recipe: %s): %s" % [recipe_id, it.name])
+			print("[STATION] ðŸ½ï¸ Added to serving station (recipe: %s): %s" % [recipe_id, it.name])
 			return true
 		return false
 	
@@ -231,7 +231,7 @@ func _check_recipe_completion(recipe_id: String) -> void:
 	var current_count = served_ingredients[recipe_id].size() if served_ingredients.has(recipe_id) else 0
 	
 	if current_count >= required_ingredients.size() and required_ingredients.size() > 0:
-		print("[STATION] 🎉 Recipe '%s' complete! Showing final dish..." % recipe_id)
+		print("[STATION] ðŸŽ‰ Recipe '%s' complete! Showing final dish..." % recipe_id)
 		
 		# Notify GameManager that recipe is complete (stop timer)
 		if gm.has_method("_complete_recipe_timer"):
@@ -277,7 +277,7 @@ func _show_final_dish(recipe_id: String) -> void:
 		if final_dish:
 			final_dish.position = Vector2.ZERO
 			final_dish.scale = Vector2(0.15, 0.15)
-			print("[STATION] ✅ Final dish displayed: %s (recipe: %s)" % [dish_type, recipe_id])
+			print("[STATION] âœ… Final dish displayed: %s (recipe: %s)" % [dish_type, recipe_id])
 			
 			# Start serving animation after a short delay
 			await get_tree().create_timer(1.5).timeout
@@ -328,7 +328,7 @@ func _serve_complete_dish(recipe_id: String, final_dish: Node = null) -> void:
 	
 	update_appearance()
 	
-	print("[STATION] ✅ Dish '%s' served to customer!" % recipe_id)
+	print("[STATION] âœ… Dish '%s' served to customer!" % recipe_id)
 func update_appearance() -> void:
 	if has_node("Sprite2D"):
 		if has_ingredient():
@@ -348,7 +348,7 @@ func _spawn_from_recipe_or_fallback() -> String:
 	if _gm == null:
 		_gm = get_tree().get_first_node_in_group("game_manager")
 	if _gm == null:
-		push_warning("[STATION] No GameManager found – cannot determine ingredient to spawn.")
+		push_warning("[STATION] No GameManager found â€“ cannot determine ingredient to spawn.")
 		return ""
 
 	if _gm.has_method("next_base_item"):
@@ -377,5 +377,5 @@ func _spawn_from_recipe_or_fallback() -> String:
 		print("[STATION] Using fallback exported item:", spawn_item_when_interacted)
 		return spawn_item_when_interacted
 
-	push_warning("[STATION] No ingredients available to spawn – returning placeholder 'unknown_item'")
+	push_warning("[STATION] No ingredients available to spawn â€“ returning placeholder 'unknown_item'")
 	return "unknown_item"
