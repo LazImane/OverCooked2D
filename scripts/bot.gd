@@ -1,5 +1,4 @@
 extends CharacterBody2D
-# Multi-Agent Bot: Requests tasks from GameManager and processes ingredients
 
 enum Action {
 	IDLE,
@@ -17,11 +16,9 @@ enum Action {
 @export var recipe_name: String = "demo_salad"
 @export var animPlayer: AnimationPlayer
 
-# References
 var _gm: Node = null
 var stations: Dictionary = {}
 
-# Current task
 var current_ingredient: String = ""
 var current_recipe_id: String = ""
 var flow_steps: Array = []
@@ -29,7 +26,6 @@ var current_step: int = 0
 var carried_item: Node = null
 var carried_item_type: String = ""
 
-# Action state
 var current_action: Action = Action.IDLE
 var target_position: Vector2 = Vector2.ZERO
 var target_station: Node = null
@@ -48,7 +44,6 @@ func _ready() -> void:
 		set_physics_process(false)
 		return
 	
-	# NEW: Connect to signal for endless mode
 	if _gm.has_signal("new_orders_available"):
 		_gm.connect("new_orders_available", _on_new_orders_available)
 	
@@ -57,31 +52,25 @@ func _ready() -> void:
 	
 	print("[BOT %d] Ready | Default recipe: %s" % [bot_id, recipe_name])
 
-# NEW: Wake up when new orders arrive
 func _on_new_orders_available() -> void:
 	if current_action == Action.IDLE:
-		print("[BOT %d] 🔔 New orders available! Requesting task..." % bot_id)
+		print("[BOT %d] 📢 New orders available! Requesting task..." % bot_id)
 		_request_next_task()
 
 func _physics_process(delta: float) -> void:
 	match current_action:
 		Action.IDLE:
 			_stop(delta)
-		
 		Action.MOVE:
 			_move_toward_target(delta)
 			if _at_target():
 				_on_arrived_at_station()
-		
 		Action.TAKE_INGREDIENT:
 			_take_from_station()
-		
 		Action.PLACE_ITEM:
 			_place_on_station()
-		
 		Action.PROCESS_ITEM:
 			_process_at_station()
-		
 		Action.WAIT_FOR_STATION:
 			_wait_for_station(delta)
 	
@@ -90,14 +79,18 @@ func _physics_process(delta: float) -> void:
 	
 	move_and_slide()
 
-# ==================== TASK MANAGEMENT ====================
 func _request_next_task() -> void:
-	# CRITICAL FIX: Clean up any carried items before getting new task
+	# Clean up any carried items
 	if carried_item and is_instance_valid(carried_item):
 		print("[BOT %d] ⚠️ Cleaning up carried item before new task" % bot_id)
 		carried_item.queue_free()
 		carried_item = null
 		carried_item_type = ""
+	
+	# Release any reserved station
+	if target_station and target_station.has_method("unreserve"):
+		target_station.unreserve(bot_id)
+	target_station = null
 	
 	if not _gm or not _gm.has_method("request_next_ingredient"):
 		print("[BOT %d] Cannot request task - GameManager missing method" % bot_id)
@@ -122,7 +115,6 @@ func _request_next_task() -> void:
 		return
 	
 	current_step = 0
-	
 	var flow_recipe_id := current_recipe_id if current_recipe_id != "" else recipe_name
 	
 	if _gm.has_method("get_flow_for_item"):
@@ -135,7 +127,6 @@ func _request_next_task() -> void:
 	
 	_go_to_next_step()
 
-
 func _go_to_next_step() -> void:
 	if current_step >= flow_steps.size():
 		if _gm and _gm.has_method("notify_served"):
@@ -145,50 +136,95 @@ func _go_to_next_step() -> void:
 	
 	var station_type: String = flow_steps[current_step]
 	
-	# FIX: Use smart station selection
-	target_station = _find_best_station(station_type)
+	# Find appropriate station
+	if station_type == "Serving":
+		target_station = _find_serving_station_for_recipe(current_recipe_id)
+		if not target_station:
+			push_error("[BOT %d] ❌ No serving station for recipe '%s' - abandoning task" % [bot_id, current_recipe_id])
+			if carried_item and is_instance_valid(carried_item):
+				carried_item.queue_free()
+				carried_item = null
+				carried_item_type = ""
+			_request_next_task()
+			return
+	else:
+		target_station = _find_best_station(station_type)
 	
 	if not target_station:
 		push_error("[BOT %d] Station not found: %s" % [bot_id, station_type])
 		current_action = Action.IDLE
 		return
 	
+	# Try to reserve the station
+	if target_station.has_method("reserve"):
+		if not target_station.reserve(bot_id):
+			print("[BOT %d] ⏳ Station %s reserved by another bot, waiting..." % [bot_id, station_type])
+			wait_timer = 0.0
+			current_action = Action.WAIT_FOR_STATION
+			return
+	
 	target_position = target_station.global_position
 	current_action = Action.MOVE
 	
 	print("[BOT %d] → Moving to %s (%s)" % [bot_id, station_type, target_station.name])
 
-# NEW: Smart station selection
+func _find_serving_station_for_recipe(recipe_id: String) -> Node:
+	"""Find the serving station that accepts this recipe"""
+	if _gm and _gm.has_method("find_serving_station_for_recipe"):
+		var station = _gm.find_serving_station_for_recipe(recipe_id)
+		if station:
+			print("[BOT %d] 🎯 Found serving station '%s' for recipe '%s'" % [bot_id, station.name, recipe_id])
+			return station
+	
+	# No dedicated station found - this is a critical error
+	return null
+
 func _find_best_station(station_type: String) -> Node:
-	"""Find the best available station"""
+	"""Find the best available station using load balancing"""
 	if not _gm or not _gm.has_method("_register_stations"):
-		# Fallback to old method
 		return stations.get(station_type)
 	
-	# Get all stations of this type from GameManager
 	if not _gm.stations_by_type.has(station_type):
 		push_error("[BOT %d] No stations of type: %s" % [bot_id, station_type])
 		return null
 	
 	var available: Array = _gm.stations_by_type[station_type]
-	
 	if available.is_empty():
 		return null
 	
-	if available.size() == 1:
-		return available[0]
+	# Find best station by availability AND distance
+	var best_station = null
+	var best_score = INF
 	
-	# Find first free station
 	for station in available:
-		if station.has_method("has_ingredient") and not station.has_ingredient():
-			return station
+		# Check if station is available
+		if station.has_method("is_available") and not station.is_available():
+			continue
+		
+		# Calculate score (distance + penalty for occupied)
+		var distance = global_position.distance_to(station.global_position)
+		var score = distance
+		
+		# Add penalty if station has ingredient (prefer empty stations)
+		if station.has_method("has_ingredient") and station.has_ingredient():
+			score += 200.0  # penalty
+		
+		if score < best_score:
+			best_score = score
+			best_station = station
 	
-	# All busy - pick random
-	return available[randi() % available.size()]
+	# If no available station, use closest one anyway
+	if not best_station:
+		var closest_distance = INF
+		for station in available:
+			var distance = global_position.distance_to(station.global_position)
+			if distance < closest_distance:
+				closest_distance = distance
+				best_station = station
+	
+	return best_station
 
-# ==================== STATION INTERACTIONS ====================
 func _on_arrived_at_station() -> void:
-	# FIX: Add bounds check
 	if current_step >= flow_steps.size():
 		_request_next_task()
 		return
@@ -198,13 +234,11 @@ func _on_arrived_at_station() -> void:
 	match station_type:
 		"Ingredient":
 			current_action = Action.TAKE_INGREDIENT
-		
 		"Chopping", "Cooking":
 			if carried_item != null:
 				current_action = Action.PLACE_ITEM
 			else:
 				current_action = Action.TAKE_INGREDIENT
-		
 		"Serving":
 			if carried_item != null:
 				current_action = Action.PLACE_ITEM
@@ -216,14 +250,12 @@ func _take_from_station() -> void:
 		_go_to_next_step()
 		return
 	
-	# FIX: Add bounds check
 	if current_step >= flow_steps.size():
 		_request_next_task()
 		return
 	
 	var station_type: String = flow_steps[current_step]
 	
-	# Ingredient station: spawn from GameManager and immediately take it
 	if station_type == "Ingredient":
 		if target_station.has_method("has_ingredient") and target_station.has_ingredient():
 			print("[BOT %d] ⏳ Station occupied, waiting..." % bot_id)
@@ -241,7 +273,6 @@ func _take_from_station() -> void:
 					if target_station.place_item(item_node):
 						print("[BOT %d] 📦 Ingredient spawned and placed on station" % bot_id)
 						
-						# FIX: Check after await
 						await get_tree().create_timer(0.1).timeout
 						
 						if not target_station.has_ingredient():
@@ -256,6 +287,11 @@ func _take_from_station() -> void:
 							carried_item_type = current_ingredient
 							_pickup_item_visual(taken_item)
 							print("[BOT %d] 📦 Took: %s" % [bot_id, current_ingredient])
+							
+							# Release station reservation
+							if target_station.has_method("unreserve"):
+								target_station.unreserve(bot_id)
+							
 							retry_count = 0
 							current_step += 1
 							_go_to_next_step()
@@ -279,7 +315,6 @@ func _take_from_station() -> void:
 			_handle_station_failure()
 		return
 	
-	# Chopping / Cooking: take processed item
 	if target_station.has_method("has_ingredient") and not target_station.has_ingredient():
 		print("[BOT %d] ⏳ No item ready at station, waiting..." % bot_id)
 		wait_timer = 0.0
@@ -291,6 +326,11 @@ func _take_from_station() -> void:
 		carried_item = item_node
 		_pickup_item_visual(item_node)
 		print("[BOT %d] 📦 Took processed item" % bot_id)
+		
+		# Release station
+		if target_station.has_method("unreserve"):
+			target_station.unreserve(bot_id)
+		
 		retry_count = 0
 		current_step += 1
 		_go_to_next_step()
@@ -299,12 +339,10 @@ func _take_from_station() -> void:
 		wait_timer = 0.0
 		current_action = Action.WAIT_FOR_STATION
 
-
 func _wait_for_station(delta: float) -> void:
 	_stop(delta)
 	wait_timer += delta
 	
-	# FIX: Add bounds check
 	if current_step >= flow_steps.size():
 		_request_next_task()
 		return
@@ -313,7 +351,11 @@ func _wait_for_station(delta: float) -> void:
 		retry_count += 1
 		if retry_count >= max_retries:
 			push_error("[BOT %d] ❌ Station timeout after %d retries, abandoning task" % [bot_id, max_retries])
-			# Clean up and get new task
+			
+			# Release reservation
+			if target_station and target_station.has_method("unreserve"):
+				target_station.unreserve(bot_id)
+			
 			if carried_item and is_instance_valid(carried_item):
 				print("[BOT %d] 🗑️ Dropping carried item due to timeout" % bot_id)
 				carried_item.queue_free()
@@ -321,81 +363,90 @@ func _wait_for_station(delta: float) -> void:
 				carried_item_type = ""
 			_request_next_task()
 		else:
-			print("[BOT %d] 🔄 Retry %d/%d - attempting station again" % [bot_id, retry_count, max_retries])
+			print("[BOT %d] 🔄 Retry %d/%d - finding new station" % [bot_id, retry_count, max_retries])
 			wait_timer = 0.0
 			
-			# FIX: Decide correct action based on whether we're carrying something
-			if carried_item != null:
-				current_action = Action.PLACE_ITEM
-			else:
-				current_action = Action.TAKE_INGREDIENT
-	else:
-		# Periodically retry
-		if fmod(wait_timer, 0.5) < delta:
+			# Release old station and find a new one
+			if target_station and target_station.has_method("unreserve"):
+				target_station.unreserve(bot_id)
+			
+			# Find a different station
 			var station_type: String = flow_steps[current_step]
-			var should_retry := false
+			target_station = _find_best_station(station_type)
 			
-			# Determine if station is ready based on what we're trying to do
-			if carried_item != null:
-				# We're trying to place - check if station is free
-				if station_type == "Serving":
-					should_retry = true  # Serving station always accepts
-				else:
-					should_retry = not target_station.has_ingredient()
+			if target_station:
+				target_position = target_station.global_position
+				current_action = Action.MOVE
 			else:
-				# We're trying to take - check if item is ready
-				if station_type == "Ingredient":
-					should_retry = not target_station.has_ingredient()
-				else:
-					should_retry = target_station.has_ingredient()
-			
-			if should_retry:
-				print("[BOT %d] ✓ Station ready, retrying..." % bot_id)
-				wait_timer = 0.0
-				if carried_item != null:
-					current_action = Action.PLACE_ITEM
-				else:
-					current_action = Action.TAKE_INGREDIENT
-
+				_request_next_task()
 
 func _handle_station_failure() -> void:
 	retry_count += 1
 	if retry_count >= max_retries:
-		push_error("[BOT %d] ❌ Failed after %d retries, requesting new task" % [bot_id, max_retries])
+		push_error("[BOT %d] ❌ Failed after %d retries - abandoning task" % [bot_id, max_retries])
+		
+		# Release reservation
+		if target_station and target_station.has_method("unreserve"):
+			target_station.unreserve(bot_id)
+		
+		if carried_item and is_instance_valid(carried_item):
+			carried_item.queue_free()
+			carried_item = null
+			carried_item_type = ""
 		_request_next_task()
 	else:
 		print("[BOT %d] ⚠️ Retry %d/%d after failure" % [bot_id, retry_count, max_retries])
 		wait_timer = 0.0
 		current_action = Action.WAIT_FOR_STATION
 
-
 func _place_on_station() -> void:
 	if not carried_item or not target_station:
 		_go_to_next_step()
 		return
 	
-	# FIX: Add bounds check
 	if current_step >= flow_steps.size():
 		_request_next_task()
 		return
 	
 	var station_type: String = flow_steps[current_step]
-	if station_type != "Serving":
-		if target_station.has_method("has_ingredient") and target_station.has_ingredient():
-			print("[BOT %d] ⏳ Station occupied, waiting to place..." % bot_id)
-			wait_timer = 0.0
-			current_action = Action.WAIT_FOR_STATION
-			return
+	
+	# For serving stations, verify it's the correct one
+	if station_type == "Serving":
+		if "recipe_id" in target_station and target_station.recipe_id != "" and target_station.recipe_id != current_recipe_id:
+			push_error("[BOT %d] ❌ Wrong serving station! Expected '%s' but at '%s' - finding correct one" % 
+				[bot_id, current_recipe_id, target_station.recipe_id])
+			
+			# DON'T enter infinite loop - abandon task if we can't find right station
+			var correct_station = _find_serving_station_for_recipe(current_recipe_id)
+			if correct_station and correct_station != target_station:
+				target_station = correct_station
+				target_position = target_station.global_position
+				current_action = Action.MOVE
+				print("[BOT %d] 🔄 Moving to correct serving station '%s'" % [bot_id, target_station.name])
+				return
+			else:
+				# Can't find right station - abandon
+				push_error("[BOT %d] ❌ Cannot find correct serving station - abandoning" % bot_id)
+				_handle_station_failure()
+				return
 	
 	var success := false
-	
-	if station_type == "Serving" and target_station.has_method("place_item"):
-		success = target_station.place_item(carried_item, current_recipe_id)
+	if station_type == "Serving":
+		if target_station.has_method("place_item"):
+			success = target_station.place_item(carried_item, current_recipe_id)
+		else:
+			success = _place_item_node_on(target_station, carried_item)
 	else:
+		if station_type != "Cooking":
+			if target_station.has_method("has_ingredient") and target_station.has_ingredient():
+				print("[BOT %d] ⏳ Station occupied, waiting to place..." % bot_id)
+				wait_timer = 0.0
+				current_action = Action.WAIT_FOR_STATION
+				return
 		success = _place_item_node_on(target_station, carried_item)
 	
 	if success:
-		print("[BOT %d] 📥 Placed on %s (recipe: %s)" % [bot_id, station_type, current_recipe_id])
+		print("[BOT %d] 🍽️ Placed on %s (recipe: %s)" % [bot_id, station_type, current_recipe_id])
 		carried_item = null
 		carried_item_type = ""
 		retry_count = 0
@@ -410,7 +461,6 @@ func _process_at_station() -> void:
 		_go_to_next_step()
 		return
 	
-	# FIX: Add bounds check
 	if current_step >= flow_steps.size():
 		_request_next_task()
 		return
@@ -422,13 +472,42 @@ func _process_at_station() -> void:
 			_gm.notify_served(current_ingredient)
 		
 		print("[BOT %d] ✅ Placed on serving station: %s" % [bot_id, current_ingredient])
+		
+		# Release station
+		if target_station.has_method("unreserve"):
+			target_station.unreserve(bot_id)
+		
 		carried_item = null
 		carried_item_type = ""
 		current_step += 1
 		_go_to_next_step()
 		return
 	
-	# Other stations (Chopping, Cooking): process then take
+	if station_type == "Cooking":
+		if not target_station.has_ingredient():
+			print("[BOT %d] 🍲 Pot still cooking, waiting..." % bot_id)
+			wait_timer = 0.0
+			current_action = Action.WAIT_FOR_STATION
+			return
+		
+		var item_node = _take_item_node_from(target_station)
+		if item_node:
+			carried_item = item_node
+			_pickup_item_visual(item_node)
+			print("[BOT %d] 🍲 Took cooked dish from pot" % bot_id)
+			
+			# Release station
+			if target_station.has_method("unreserve"):
+				target_station.unreserve(bot_id)
+			
+			retry_count = 0
+			current_step += 1
+			_go_to_next_step()
+		else:
+			print("[BOT %d] ⚠️ Failed to take from pot" % bot_id)
+			_handle_station_failure()
+		return
+	
 	_call_interact(target_station)
 	
 	var item_node = _take_item_node_from(target_station)
@@ -436,6 +515,11 @@ func _process_at_station() -> void:
 		carried_item = item_node
 		_pickup_item_visual(item_node)
 		print("[BOT %d] ⚙️ Processed at %s" % [bot_id, station_type])
+		
+		# Release station
+		if target_station.has_method("unreserve"):
+			target_station.unreserve(bot_id)
+		
 		retry_count = 0
 		current_step += 1
 		_go_to_next_step()
@@ -443,7 +527,6 @@ func _process_at_station() -> void:
 		push_error("[BOT %d] Failed to take processed item" % bot_id)
 		_handle_station_failure()
 
-# ==================== MOVEMENT ====================
 func _move_toward_target(delta: float) -> void:
 	var direction = (target_position - global_position).normalized()
 	var distance = global_position.distance_to(target_position)
@@ -459,7 +542,6 @@ func _stop(delta: float) -> void:
 func _at_target() -> bool:
 	return global_position.distance_to(target_position) <= stop_distance
 
-# ==================== STATION HELPERS ====================
 func _find_stations() -> void:
 	stations.clear()
 	for station in get_tree().get_nodes_in_group("stations"):
@@ -468,10 +550,11 @@ func _find_stations() -> void:
 	print("[BOT %d] Found stations: %s" % [bot_id, stations.keys()])
 
 func playAnim(b: bool):
-	if b:
-		animPlayer.play("hop")
-	else:
-		animPlayer.stop()
+	if animPlayer:
+		if b:
+			animPlayer.play("hop")
+		else:
+			animPlayer.stop()
 
 func _call_interact(station: Node) -> void:
 	if station and station.has_method("interact"):
@@ -485,7 +568,7 @@ func _take_item_node_from(station: Node) -> Node:
 
 func _place_item_node_on(station: Node, item: Node) -> bool:
 	if station and station.has_method("place_item"):
-		return bool(station.place_item(item))
+		return bool(station.place_item(item, current_recipe_id))
 	return false
 
 func _pickup_item_visual(item: Node) -> void:

@@ -5,7 +5,7 @@ extends Node
 @export var time_label: Label 
 @export var endless_mode: bool = true
 @export var order_delay: float = 2.0
-@export var min_active_orders: int = 3  # NEW: Keep at least 3 orders active
+@export var min_active_orders: int = 3
 
 signal new_orders_available
 
@@ -22,8 +22,6 @@ var _served_count: int = 0
 var _spawn_idx: int = 0
 var _current_time: float = 0.0
 var _orders_completed: int = 0
-
-# NEW: Track orders by status
 var _pending_orders: int = 0
 var _in_progress_orders: int = 0
 
@@ -64,7 +62,6 @@ func _complete_recipe_timer(recipe_id: String) -> float:
 	print("[GM] ✅ Recipe '%s' completed in %.2f seconds! (Total completed: %d)" % 
 		[recipe_id, completion_time, _orders_completed])
 	
-	# NEW: Immediately spawn replacement order (no delay)
 	if endless_mode:
 		_spawn_new_order()
 	
@@ -99,6 +96,32 @@ func _register_stations() -> void:
 			stations_by_type[t] = []
 		stations_by_type[t].append(station)
 	print("[GM] Registered stations:", stations_by_type.keys())
+
+
+# ==================== NEW: SERVING STATION LOOKUP ====================
+func find_serving_station_for_recipe(recipe_id: String) -> Node:
+	"""Find the correct serving station for a specific recipe"""
+	if not stations_by_type.has("Serving"):
+		push_error("[GM] No serving stations registered!")
+		return null
+	
+	var serving_stations: Array = stations_by_type["Serving"]
+	
+	# First, try to find a dedicated station for this recipe
+	for station in serving_stations:
+		if "recipe_id" in station and station.recipe_id == recipe_id:
+			print("[GM] 🎯 Found dedicated serving station '%s' for recipe '%s'" % [station.name, recipe_id])
+			return station
+	
+	# Fallback: find a station that accepts all recipes (empty recipe_id)
+	for station in serving_stations:
+		if "recipe_id" in station and station.recipe_id == "":
+			print("[GM] 🎯 Using universal serving station '%s' for recipe '%s'" % [station.name, recipe_id])
+			return station
+	
+	# If no match found, this is an error - don't use wrong station
+	push_error("[GM] ❌ No serving station found for recipe '%s'! Please add one." % recipe_id)
+	return null
 
 
 # ==================== RECIPE SETUP ====================
@@ -159,7 +182,6 @@ func _setup_orders() -> void:
 	_in_progress_orders = 0
 
 	if endless_mode:
-		# NEW: Start with min_active_orders to keep bots busy
 		for i in range(min_active_orders):
 			_add_random_order()
 			_pending_orders += 1
@@ -244,7 +266,6 @@ func _prepare_recipe_order(recipe_id: String) -> void:
 
 # ==================== BOT TASK ASSIGNMENT ====================
 func request_next_ingredient(bot_id: int) -> Dictionary:
-	# NEW: Proactively spawn more orders if queue is getting low
 	if endless_mode:
 		var active_orders = _pending_orders + _in_progress_orders
 		if active_orders < min_active_orders:
@@ -366,7 +387,7 @@ func _process(delta):
 	var elapsed_time = "TOTAL TIME: %.2fs\n" % _current_time
 	
 	if active_recipe_timers.size() > 0:
-		var display_text = "🍳 Active Orders:\n"
+		var display_text = "🳠Active Orders:\n"
 		for recipe_id in active_recipe_timers.keys():
 			var elapsed = _current_time - active_recipe_timers[recipe_id]
 			var recipe_name = recipes[recipe_id]["name"]

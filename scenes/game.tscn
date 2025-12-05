@@ -1611,8 +1611,8 @@ size = Vector2(15, 16.5)
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_fc0e3"]
 size = Vector2(18, 15)
 
-[sub_resource type="RectangleShape2D" id="RectangleShape2D_7jktm"]
-size = Vector2(9, 11)
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_vtaks"]
+size = Vector2(19, 19)
 
 [node name="Game" type="Node2D"]
 
@@ -1626,7 +1626,6 @@ layer_1/name = "Layer1"
 [node name="IngredientsStation" type="Area2D" parent="." groups=["stations"]]
 position = Vector2(175, 8)
 script = ExtResource("7_ca42v")
-station_id = 1
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="IngredientsStation"]
 position = Vector2(-10, -13)
@@ -1639,7 +1638,6 @@ shape = SubResource("RectangleShape2D_eow3j")
 [node name="IngredientsStation2" type="Area2D" parent="." groups=["stations"]]
 position = Vector2(176, -46)
 script = ExtResource("7_ca42v")
-station_id = 2
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="IngredientsStation2"]
 position = Vector2(-10, -2)
@@ -1648,7 +1646,6 @@ shape = SubResource("RectangleShape2D_eow3j")
 [node name="IngredientsStation3" type="Area2D" parent="." groups=["stations"]]
 position = Vector2(177, 61)
 script = ExtResource("7_ca42v")
-station_id = 3
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="IngredientsStation3"]
 position = Vector2(-8, 7)
@@ -1658,7 +1655,6 @@ shape = SubResource("RectangleShape2D_eow3j")
 position = Vector2(76, -117)
 script = ExtResource("7_ca42v")
 station_type = "Chopping"
-station_id = 1
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="choppingStation"]
 position = Vector2(2, 7)
@@ -1668,7 +1664,6 @@ shape = SubResource("RectangleShape2D_feb5d")
 position = Vector2(76, -117)
 script = ExtResource("7_ca42v")
 station_type = "Chopping"
-station_id = 2
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="choppingStation2"]
 position = Vector2(-29, 7)
@@ -1678,7 +1673,6 @@ shape = SubResource("RectangleShape2D_feb5d")
 position = Vector2(76, -117)
 script = ExtResource("7_ca42v")
 station_type = "Chopping"
-station_id = 3
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="choppingStation3"]
 position = Vector2(-61, 10)
@@ -1688,7 +1682,6 @@ shape = SubResource("RectangleShape2D_feb5d")
 position = Vector2(-116, -125)
 script = ExtResource("7_ca42v")
 station_type = "Cooking"
-station_id = 1
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="CookingStation"]
 position = Vector2(3, 10)
@@ -1698,7 +1691,6 @@ shape = SubResource("RectangleShape2D_fc0e3")
 position = Vector2(-116, -125)
 script = ExtResource("7_ca42v")
 station_type = "Cooking"
-station_id = 2
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="CookingStation2"]
 position = Vector2(38, 12)
@@ -1708,32 +1700,10 @@ shape = SubResource("RectangleShape2D_fc0e3")
 position = Vector2(-116, -125)
 script = ExtResource("7_ca42v")
 station_type = "Cooking"
-station_id = 3
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="CookingStation3"]
 position = Vector2(71, 10)
 shape = SubResource("RectangleShape2D_fc0e3")
-
-[node name="ServingStation" type="Area2D" parent="." groups=["stations"]]
-position = Vector2(-176, -1)
-script = ExtResource("7_ca42v")
-station_type = "Serving"
-
-[node name="CollisionShape2D" type="CollisionShape2D" parent="ServingStation"]
-position = Vector2(9, 63)
-shape = SubResource("RectangleShape2D_7jktm")
-
-[node name="CollisionShape2D2" type="CollisionShape2D" parent="ServingStation"]
-position = Vector2(11, -39)
-shape = SubResource("RectangleShape2D_7jktm")
-
-[node name="CollisionShape2D3" type="CollisionShape2D" parent="ServingStation"]
-position = Vector2(10, -13)
-shape = SubResource("RectangleShape2D_7jktm")
-
-[node name="CollisionShape2D4" type="CollisionShape2D" parent="ServingStation"]
-position = Vector2(10, 14)
-shape = SubResource("RectangleShape2D_7jktm")
 
 [node name="GameManager" type="Node" parent="." node_paths=PackedStringArray("time_label")]
 script = ExtResource("8_rysoc")
@@ -1747,22 +1717,18 @@ collision_layer = 8
 [node name="Bot2" parent="." instance=ExtResource("10_vtaks")]
 position = Vector2(121, 90)
 collision_layer = 2
-bot_id = 2
 
 [node name="Camera2D" type="Camera2D" parent="."]
 zoom = Vector2(2.3, 2.3)
 
 [node name="Bot3" parent="." instance=ExtResource("10_vtaks")]
 collision_layer = 4
-bot_id = 3
 
 [node name="Bot4" parent="." instance=ExtResource("10_vtaks")]
 collision_layer = 4
-bot_id = 4
 
 [node name="Bot5" parent="." instance=ExtResource("10_vtaks")]
 collision_layer = 4
-bot_id = 5
 
 [node name="CanvasLayer" type="CanvasLayer" parent="."]
 
@@ -1773,3 +1739,63 @@ offset_bottom = 23.0
 [node name="Label2" type="Label" parent="CanvasLayer"]
 offset_right = 40.0
 offset_bottom = 23.0
+
+[node name="ServingStation_demoSalad" type="Area2D" parent="." groups=["stations"]]
+position = Vector2(-177, -66)
+script = ExtResource("7_ca42v")
+station_type = "Serving"
+recipe_id = "demo_salad"
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="ServingStation_demoSalad"]
+position = Vector2(-0.5, 0.5)
+shape = SubResource("RectangleShape2D_vtaks")
+
+[node name="ServingStation_demoSalad2" type="Area2D" parent="." groups=["stations"]]
+position = Vector2(-179, -36)
+script = ExtResource("7_ca42v")
+station_type = "Serving"
+recipe_id = "tomato_soup"
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="ServingStation_demoSalad2"]
+position = Vector2(0, 1)
+shape = SubResource("RectangleShape2D_vtaks")
+
+[node name="ServingStation_demoSalad3" type="Area2D" parent="." groups=["stations"]]
+position = Vector2(-179, -8)
+script = ExtResource("7_ca42v")
+station_type = "Serving"
+recipe_id = "veggie_stir_fry"
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="ServingStation_demoSalad3"]
+position = Vector2(3, 0)
+shape = SubResource("RectangleShape2D_vtaks")
+
+[node name="ServingStation_demoSalad4" type="Area2D" parent="." groups=["stations"]]
+position = Vector2(-178, 20)
+script = ExtResource("7_ca42v")
+station_type = "Serving"
+recipe_id = "caesar_salad"
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="ServingStation_demoSalad4"]
+position = Vector2(1, 0)
+shape = SubResource("RectangleShape2D_vtaks")
+
+[node name="ServingStation_demoSalad5" type="Area2D" parent="." groups=["stations"]]
+position = Vector2(-177, 46)
+script = ExtResource("7_ca42v")
+station_type = "Serving"
+recipe_id = "potato_soup"
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="ServingStation_demoSalad5"]
+position = Vector2(0, 1)
+shape = SubResource("RectangleShape2D_vtaks")
+
+[node name="ServingStation_demoSalad6" type="Area2D" parent="." groups=["stations"]]
+position = Vector2(-175, 73)
+script = ExtResource("7_ca42v")
+station_type = "Serving"
+recipe_id = "garden_salad"
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="ServingStation_demoSalad6"]
+position = Vector2(0, 1)
+shape = SubResource("RectangleShape2D_vtaks")
