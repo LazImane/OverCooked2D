@@ -22,8 +22,8 @@ var _served_count: int = 0
 var _spawn_idx: int = 0
 var _current_time: float = 0.0
 var _orders_completed: int = 0
-
-
+var moyennetemps: Array = []
+var summoy : float = 0.0
 func _ready() -> void:
 	add_to_group("game_manager")
 	_register_stations()
@@ -52,7 +52,7 @@ func _complete_recipe_timer(recipe_id: String) -> float:
 		"score": completion_time,
 		"completed_at": _current_time
 	})
-	
+	moyennetemps.append(completion_time)
 	active_recipe_timers.erase(recipe_id)
 	_orders_completed += 1
 	print("[GM] ✅ Recipe '%s' completed in %.2f seconds! (Total completed: %d)" % 
@@ -368,6 +368,13 @@ func _process(delta):
 			scores_text += "%s: %.2fs\n" % [recipe_name, completion["score"]]
 		time_label.text = elapsed_time + scores_text
 	stats(); 
+func moyenne():
+	summoy = 0.0
+	for i in range(moyennetemps.size()): 
+		summoy += moyennetemps[i]
+		print(summoy)
+		
 func stats(): 
+	moyenne()
 	if(_current_time >= 120.0):
-		print("IN 120 SECONDS(2mins) WE MADE %d recipes " % completed_recipes.size() ); 
+		print("MOYENNE IN 120 SECONDS (2 mins): ", float(summoy) / moyennetemps.size())
