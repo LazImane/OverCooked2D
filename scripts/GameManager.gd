@@ -14,6 +14,7 @@ var ingredients: Dictionary = {}
 var stations_by_type: Dictionary = {}
 var orders: Array = []
 var active_recipe_timers: Dictionary = {}
+var _recipe_instance_counter: Dictionary = {}  # recipe_id -> counter
 var completed_recipes: Array = []
 var current_recipe_id: String = "demo_salad"
 var _order_queue: Array = []
@@ -36,17 +37,34 @@ func _ready() -> void:
 
 
 # ==================== TIMER MANAGEMENT ====================
-func _start_recipe_timer(recipe_id: String) -> void:
-	if not active_recipe_timers.has(recipe_id):
-		active_recipe_timers[recipe_id] = _current_time
-		print("[GM] ⏱️ Timer started for recipe '%s' at %.2fs" % [recipe_id, _current_time])
+func _start_recipe_timer(recipe_id: String) -> String:
+	if not _recipe_instance_counter.has(recipe_id):
+		_recipe_instance_counter[recipe_id] = 0
+	
+	_recipe_instance_counter[recipe_id] += 1
+	var timer_key = "%s_%d" % [recipe_id, _recipe_instance_counter[recipe_id]]
+	
+	active_recipe_timers[timer_key] = _current_time
+	print("[GM] Timer started for '%s' (key: %s) at %.2fs" % [recipe_id, timer_key, _current_time])
+	return timer_key
 
 func _complete_recipe_timer(recipe_id: String) -> float:
-	if not active_recipe_timers.has(recipe_id):
+	"""Complete the oldest timer for this recipe_id"""
+	var oldest_key = ""
+	var oldest_time = INF
+	
+	for key in active_recipe_timers.keys():
+		if key.begins_with(recipe_id + "_"):
+			var start_time = active_recipe_timers[key]
+			if start_time < oldest_time:
+				oldest_time = start_time
+				oldest_key = key
+	
+	if oldest_key == "":
 		push_warning("[GM] No timer found for recipe '%s'" % recipe_id)
 		return 0.0
 	
-	var start_time = active_recipe_timers[recipe_id]
+	var start_time = active_recipe_timers[oldest_key]
 	var completion_time = _current_time - start_time
 	
 	completed_recipes.append({
@@ -55,18 +73,17 @@ func _complete_recipe_timer(recipe_id: String) -> float:
 		"completed_at": _current_time
 	})
 	
-	active_recipe_timers.erase(recipe_id)
+	active_recipe_timers.erase(oldest_key)
 	_orders_completed += 1
 	_in_progress_orders -= 1
 	
-	print("[GM] ✅ Recipe '%s' completed in %.2f seconds! (Total completed: %d)" % 
+	print("[GM] Recipe '%s' completed in %.2f seconds! (Total completed: %d)" % 
 		[recipe_id, completion_time, _orders_completed])
 	
 	if endless_mode:
 		_spawn_new_order()
 	
 	return completion_time
-
 
 func _spawn_new_order() -> void:
 	if not endless_mode:
@@ -110,12 +127,17 @@ func find_serving_station_for_recipe(recipe_id: String) -> Node:
 	# First, try to find a dedicated station for this recipe
 	for station in serving_stations:
 		if "recipe_id" in station and station.recipe_id == recipe_id:
+			# Check if station is available (not already completing a recipe)
+			if "_recipe_completed" in station and station._recipe_completed:
+				continue  # Skip this one, it's busy
 			print("[GM] 🎯 Found dedicated serving station '%s' for recipe '%s'" % [station.name, recipe_id])
 			return station
 	
 	# Fallback: find a station that accepts all recipes (empty recipe_id)
 	for station in serving_stations:
 		if "recipe_id" in station and station.recipe_id == "":
+			if "_recipe_completed" in station and station._recipe_completed:
+				continue
 			print("[GM] 🎯 Using universal serving station '%s' for recipe '%s'" % [station.name, recipe_id])
 			return station
 	
@@ -268,30 +290,107 @@ func _prepare_recipe_order(recipe_id: String) -> void:
 func request_next_ingredient(bot_id: int) -> Dictionary:
 	if endless_mode:
 		var active_orders = _pending_orders + _in_progress_orders
-		if active_orders < min_active_orders:
-			print("[GM] 🔄 Queue low, spawning additional order (active: %d)" % active_orders)
-			_spawn_new_order()
+		var available_tasks = _order_queue.size()
+		
+		var total_bots = get_tree().get_nodes_in_group("bots").size()
+		if total_bots == 0:
+			total_bots = 5
+		
+		var needed_tasks = total_bots * 3
+		
+		if available_tasks < needed_tasks:
+			var orders_to_spawn = ceili(float(needed_tasks - available_tasks) / 3.0)
+			print("[GM] 📋 Low on tasks (%d), spawning %d new orders for %d bots" % [available_tasks, orders_to_spawn, total_bots])
+			for i in range(orders_to_spawn):
+				_spawn_new_order()
 	
 	if _order_queue.is_empty():
 		print("[GM] No more ingredients available for bot %d" % bot_id)
 		return {}
 	
-	var task: Dictionary = _order_queue.pop_front()
+	# PRIORITY SYSTEM: Find the best task based on recipe completion progress
+	var best_task_idx = _find_best_task_index()
+	
+	if best_task_idx == -1:
+		print("[GM] No valid tasks found for bot %d" % bot_id)
+		return {}
+	
+	# Remove the selected task from the queue
+	var task: Dictionary = _order_queue[best_task_idx]
+	_order_queue.remove_at(best_task_idx)
+	
 	var recipe_id: String = task.get("recipe_id", "")
 	var ingredient_id: String = task.get("ingredient_id", "")
 	var order_index: int = task.get("order_index", -1)
 	
-	if order_index >= 0 and orders[order_index]["status"] == "pending":
-		orders[order_index]["status"] = "in_progress"
-		orders[order_index]["start_time"] = _current_time
-		_start_recipe_timer(recipe_id)
-		_pending_orders -= 1
-		_in_progress_orders += 1
+	# Start timer when FIRST ingredient of recipe is assigned
+	if order_index >= 0 and order_index < orders.size():
+		if orders[order_index]["status"] == "pending":
+			orders[order_index]["status"] = "in_progress"
+			orders[order_index]["start_time"] = _current_time
+			_start_recipe_timer(recipe_id)
+			_pending_orders -= 1
+			_in_progress_orders += 1
+			print("[GM] 🚀 Recipe '%s' now IN PROGRESS (order #%d)" % [recipe_id, order_index])
 	
-	print("[GM] Assigned '%s' (%s) to bot %d (%d remaining | %d pending | %d in progress)" %
+	print("[GM] Assigned '%s' (%s) to bot %d [PRIORITY] (%d remaining | %d pending | %d in progress)" %
 		[ingredient_id, recipe_id, bot_id, _order_queue.size(), _pending_orders, _in_progress_orders])
 	return task
+func _find_best_task_index() -> int:
+	"""
+	Find the best task to assign next, prioritizing:
+	1. Recipes closest to completion (fewer ingredients remaining)
+	2. Recipes that have been started (in_progress)
+	3. Older recipes (lower order_index)
+	"""
+	if _order_queue.is_empty():
+		return -1
+	
+	# Count remaining ingredients per recipe
+	var recipe_remaining: Dictionary = {}
+	for task in _order_queue:
+		var recipe_id = task["recipe_id"]
+		if not recipe_remaining.has(recipe_id):
+			recipe_remaining[recipe_id] = 0
+		recipe_remaining[recipe_id] += 1
+	
+	# Find task with best priority score
+	var best_idx = 0
+	var best_score = _calculate_priority_score(_order_queue[0], recipe_remaining)
+	
+	for i in range(1, _order_queue.size()):
+		var score = _calculate_priority_score(_order_queue[i], recipe_remaining)
+		if score < best_score:  # Lower score = higher priority
+			best_score = score
+			best_idx = i
+	
+	return best_idx
 
+
+func _calculate_priority_score(task: Dictionary, recipe_remaining: Dictionary) -> float:
+	"""
+	Calculate priority score for a task. Lower = higher priority.
+	
+	Scoring system:
+	- Base score: number of ingredients remaining in this recipe
+	- Bonus (-1000): recipe is in_progress (started)
+	- Penalty (+0.1 * order_index): favor older orders slightly
+	"""
+	var recipe_id = task["recipe_id"]
+	var order_idx = task.get("order_index", 0)
+	
+	# Base priority: fewer remaining ingredients = higher priority
+	var score = float(recipe_remaining.get(recipe_id, 999))
+	
+	# Strong bonus for recipes already in progress
+	if order_idx >= 0 and order_idx < orders.size():
+		if orders[order_idx]["status"] == "in_progress":
+			score -= 1000.0
+	
+	# Small penalty for newer orders (favor completing older ones)
+	score += order_idx * 0.1
+	
+	return score
 
 # ==================== RECIPE QUERIES ====================
 func get_recipe_ingredients(recipe_id: String) -> Array:
@@ -387,31 +486,43 @@ func _process(delta):
 	var elapsed_time = "TOTAL TIME: %.2fs\n" % _current_time
 	
 	if active_recipe_timers.size() > 0:
-		var display_text = "🳠Active Orders:\n"
-		for recipe_id in active_recipe_timers.keys():
-			var elapsed = _current_time - active_recipe_timers[recipe_id]
-			var recipe_name = recipes[recipe_id]["name"]
+		var display_text = "Active Orders:\n"
+		for timer_key in active_recipe_timers.keys():
+			var elapsed = _current_time - active_recipe_timers[timer_key]
+			# Extract recipe_id from timer_key (format: "recipe_id_N")
+			var parts = timer_key.split("_")
+			var recipe_id = "_".join(parts.slice(0, parts.size() - 1))
+			var recipe_name = recipes[recipe_id]["name"] if recipes.has(recipe_id) else recipe_id
 			display_text += "%s: %.1fs  " % [recipe_name, elapsed]
 		
 		if endless_mode:
-			display_text += "\n📊 Completed: %d | Pending: %d" % [_orders_completed, _pending_orders]
+			display_text += "\nCompleted: %d | Pending: %d | In Progress: %d" % [_orders_completed, _pending_orders, _in_progress_orders]
 		
 		time_label.text = elapsed_time + display_text
 	else:
 		if endless_mode:
-			time_label.text = elapsed_time + "⏳ Waiting for orders...\n📊 Completed: %d" % _orders_completed
+			time_label.text = elapsed_time + "Waiting for orders...\nCompleted: %d" % _orders_completed
 		else:
-			time_label.text = elapsed_time + "⏳ Waiting for orders..."
+			time_label.text = elapsed_time + "Waiting for orders..."
 	
 	if not endless_mode and completed_recipes.size() == orders.size() and orders.size() > 0:
-		var scores_text = "🎉 ALL COMPLETED!\n\nScores:\n"
+		var scores_text = "ALL COMPLETED!\n\nScores:\n"
 		for completion in completed_recipes:
 			var recipe_name = recipes[completion["recipe_id"]]["name"]
 			scores_text += "%s: %.2fs\n" % [recipe_name, completion["score"]]
 		time_label.text = elapsed_time + scores_text
 	
-	stats()
+	# Stats tracking
+	if int(_current_time) % 30 == 0 and int(_current_time) > 0:
+		_log_stats()
 
-func stats(): 
-	if _current_time >= 120.0:
-		print("IN 120 SECONDS (2mins) WE MADE %d recipes" % completed_recipes.size())
+
+func _log_stats():
+	var total_bots = get_tree().get_nodes_in_group("bots").size()
+	var idle_bots = 0
+	for bot in get_tree().get_nodes_in_group("bots"):
+		if "current_action" in bot and bot.current_action == 0:
+			idle_bots += 1
+	
+	print("[GM] 📈 STATS @ %.0fs: Completed: %d | Active: %d | Queue: %d | Bots: %d/%d active" % 
+		[_current_time, _orders_completed, active_recipe_timers.size(), _order_queue.size(), total_bots - idle_bots, total_bots])

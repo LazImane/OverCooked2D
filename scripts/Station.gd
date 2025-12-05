@@ -7,13 +7,14 @@ var reserved_by: int = -1
 var current_item: String = ""
 @export var spawn_item_when_interacted: String = ""
 @export var station_id: int = -1
+var progress_label: Label = null
 
 # For serving station: track ingredients by recipe
 var served_ingredients: Array = []
 var current_ingredient: Node = null
 var _gm: Node = null
 var _local_spawn_idx := 0
-var _recipe_completed: bool = false  # NEW: Prevent duplicate completions
+var _recipe_completed: bool = false
 
 func _ready() -> void:
 	add_to_group("stations")
@@ -25,7 +26,27 @@ func _ready() -> void:
 			print("[STATION %s] Dedicated to recipe: %s" % [name, recipe_id])
 		else:
 			print("[STATION %s] Accepts ALL recipes" % name)
+		_create_progress_label()
 
+func _create_progress_label() -> void:
+	"""Create a progress indicator label"""
+	progress_label = Label.new()
+	progress_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	progress_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	
+	# Style the label
+	progress_label.add_theme_font_size_override("font_size", 14)
+	progress_label.add_theme_color_override("font_color", Color.WHITE)
+	progress_label.add_theme_color_override("font_outline_color", Color.BLACK)
+	progress_label.add_theme_constant_override("outline_size", 3)
+	
+	# Position above the station
+	progress_label.position = Vector2(-25, -45)
+	progress_label.size = Vector2(50, 25)
+	
+	add_child(progress_label)
+	_update_progress_display()
+	
 func reserve(bot_id: int) -> bool:
 	"""Try to reserve this station for a bot"""
 	if reserved_by == -1:
@@ -41,7 +62,7 @@ func unreserve(bot_id: int) -> void:
 func is_available() -> bool:
 	"""Check if station can be used"""
 	if station_type == "Serving":
-		return not _recipe_completed  # Serving stations available until recipe done
+		return not _recipe_completed
 	return reserved_by == -1 and current_ingredient == null
 
 func process_item(item: Dictionary) -> String:
@@ -124,6 +145,12 @@ func place_item(it, incoming_recipe_id: String = "") -> bool:
 			print("[STATION] ❌ '%s' recipe already completed, not accepting more" % name)
 			return false
 		
+		# Verify we still need this ingredient
+		if served_ingredients.size() >= _get_required_count():
+			print("[STATION] ❌ '%s' already has enough ingredients (%d/%d)" % 
+				[name, served_ingredients.size(), _get_required_count()])
+			return false
+		
 		if typeof(it) == TYPE_OBJECT and it is Node:
 			_add_ingredient_to_serving(it)
 			print("[STATION] 🍽️ Added to '%s' (recipe: %s): %s (%d/%d)" % 
@@ -131,7 +158,7 @@ func place_item(it, incoming_recipe_id: String = "") -> bool:
 			return true
 		return false
 	
-	# Other stations: only hold one item
+	# Other stations (Chopping, Cooking): only hold one item at a time
 	if current_ingredient == null and current_item == "":
 		if typeof(it) == TYPE_OBJECT and it is Node:
 			_place_visual_on_station(it)
@@ -201,6 +228,8 @@ func _add_ingredient_to_serving(ing: Node) -> void:
 	if ing.has_method("drop_at"):
 		ing.drop_at(self)
 	
+	_update_progress_display()
+	
 	_check_recipe_completion()
 
 func _get_required_count() -> int:
@@ -224,11 +253,11 @@ func _check_recipe_completion() -> void:
 	
 	# Check if we have all required ingredients
 	if current_count >= required_count and required_count > 0:
-		_recipe_completed = true  # Prevent duplicate completions
+		_recipe_completed = true
 		print("[STATION] 🎉 Recipe '%s' complete on '%s'! Serving %d ingredients..." % 
 			[recipe_id, name, served_ingredients.size()])
 		
-		# Notify GM
+		# Notify GM (it will find the right timer automatically)
 		if gm.has_method("_complete_recipe_timer"):
 			gm._complete_recipe_timer(recipe_id)
 		
@@ -292,10 +321,10 @@ func _serve_complete_dish(final_dish: Node = null) -> void:
 	
 	served_ingredients.clear()
 	current_item = ""
-	_recipe_completed = false  # Reset for next recipe
+	_recipe_completed = false  # FIXED: Reset so station can be used again
 	update_appearance()
-	
-	print("[STATION] ✅ Dish '%s' served from '%s'!" % [recipe_id, name])
+	_update_progress_display()
+	print("[STATION] ✅ Dish '%s' served from '%s' - station ready for next order!" % [recipe_id, name])
 
 func update_appearance() -> void:
 	if station_type == "Serving":
@@ -325,3 +354,34 @@ func _ensure_gm() -> Node:
 
 func get_current_item() -> String:
 	return current_item
+
+#added function to display state of meal visually :
+func _update_progress_display() -> void:
+	"""Update the progress bar display"""
+	if not progress_label or station_type != "Serving":
+		return
+	
+	var required = _get_required_count()
+	var current = served_ingredients.size()
+	
+	if required == 0:
+		progress_label.text = ""
+		return
+	
+	# Create visual progress bar: (••_)
+	var filled = "•" if current >= 1 else "_"
+	var filled2 = "•" if current >= 2 else "_"
+	var filled3 = "•" if current >= 3 else "_"
+	var filled4 = "•" if current >= 4 else "_"
+	
+	match required:
+		1:
+			progress_label.text = "(%s)" % filled
+		2:
+			progress_label.text = "(%s%s)" % [filled, filled2]
+		3:
+			progress_label.text = "(%s%s%s)" % [filled, filled2, filled3]
+		4:
+			progress_label.text = "(%s%s%s%s)" % [filled, filled2, filled3, filled4]
+		_:
+			progress_label.text = "%d/%d" % [current, required]

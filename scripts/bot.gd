@@ -37,6 +37,7 @@ var max_retries: int = 3
 @onready var sprite = $Sprite2D
 
 func _ready() -> void:
+	add_to_group("bots")  # NEW: Add to bots group for counting
 	playAnim(true)
 	_gm = get_tree().get_first_node_in_group("game_manager")
 	if not _gm:
@@ -339,6 +340,8 @@ func _take_from_station() -> void:
 		wait_timer = 0.0
 		current_action = Action.WAIT_FOR_STATION
 
+# Replace the _wait_for_station function in bot.gd:
+
 func _wait_for_station(delta: float) -> void:
 	_stop(delta)
 	wait_timer += delta
@@ -349,10 +352,31 @@ func _wait_for_station(delta: float) -> void:
 	
 	if wait_timer >= max_wait_time:
 		retry_count += 1
+		
+		# SPECIAL CASE: If we're carrying an ingredient, we MUST place it
+		if carried_item and is_instance_valid(carried_item):
+			if retry_count >= max_retries:
+				# Even after max retries, if carrying item, keep trying but wait longer
+				print("[BOT %d] ⚠️ Still carrying item after %d retries, extending wait..." % [bot_id, max_retries])
+				wait_timer = 0.0
+				max_wait_time = 4.0  # Wait longer
+				retry_count = max_retries - 1  # Keep just below max
+				
+				# Try to find ANY valid station for this step
+				var station_type: String = flow_steps[current_step]
+				if target_station and target_station.has_method("unreserve"):
+					target_station.unreserve(bot_id)
+				
+				target_station = _find_best_station(station_type)
+				if target_station:
+					target_position = target_station.global_position
+					current_action = Action.MOVE
+				return
+		
+		# Normal retry logic for when NOT carrying an ingredient
 		if retry_count >= max_retries:
 			push_error("[BOT %d] ❌ Station timeout after %d retries, abandoning task" % [bot_id, max_retries])
 			
-			# Release reservation
 			if target_station and target_station.has_method("unreserve"):
 				target_station.unreserve(bot_id)
 			
@@ -366,11 +390,9 @@ func _wait_for_station(delta: float) -> void:
 			print("[BOT %d] 🔄 Retry %d/%d - finding new station" % [bot_id, retry_count, max_retries])
 			wait_timer = 0.0
 			
-			# Release old station and find a new one
 			if target_station and target_station.has_method("unreserve"):
 				target_station.unreserve(bot_id)
 			
-			# Find a different station
 			var station_type: String = flow_steps[current_step]
 			target_station = _find_best_station(station_type)
 			
@@ -379,26 +401,37 @@ func _wait_for_station(delta: float) -> void:
 				current_action = Action.MOVE
 			else:
 				_request_next_task()
-
+				
 func _handle_station_failure() -> void:
 	retry_count += 1
 	if retry_count >= max_retries:
+		# CRITICAL FIX: Don't abandon the ingredient if we're carrying it!
+		if carried_item and is_instance_valid(carried_item):
+			# We have an ingredient but can't place it - wait and retry with same ingredient
+			print("[BOT %d] ⚠️ Failed to place item after %d retries, waiting before retry..." % [bot_id, max_retries])
+			
+			# Release reservation on current station
+			if target_station and target_station.has_method("unreserve"):
+				target_station.unreserve(bot_id)
+			
+			# Reset retry count and try to find station again after a brief wait
+			retry_count = 0
+			wait_timer = 0.0
+			current_action = Action.WAIT_FOR_STATION
+			return
+		
+		# If we don't have an ingredient, we can safely abandon and get new task
 		push_error("[BOT %d] ❌ Failed after %d retries - abandoning task" % [bot_id, max_retries])
 		
-		# Release reservation
 		if target_station and target_station.has_method("unreserve"):
 			target_station.unreserve(bot_id)
 		
-		if carried_item and is_instance_valid(carried_item):
-			carried_item.queue_free()
-			carried_item = null
-			carried_item_type = ""
 		_request_next_task()
 	else:
 		print("[BOT %d] ⚠️ Retry %d/%d after failure" % [bot_id, retry_count, max_retries])
 		wait_timer = 0.0
 		current_action = Action.WAIT_FOR_STATION
-
+		
 func _place_on_station() -> void:
 	if not carried_item or not target_station:
 		_go_to_next_step()
@@ -483,35 +516,15 @@ func _process_at_station() -> void:
 		_go_to_next_step()
 		return
 	
-	if station_type == "Cooking":
-		if not target_station.has_ingredient():
-			print("[BOT %d] 🍲 Pot still cooking, waiting..." % bot_id)
-			wait_timer = 0.0
-			current_action = Action.WAIT_FOR_STATION
-			return
-		
-		var item_node = _take_item_node_from(target_station)
-		if item_node:
-			carried_item = item_node
-			_pickup_item_visual(item_node)
-			print("[BOT %d] 🍲 Took cooked dish from pot" % bot_id)
-			
-			# Release station
-			if target_station.has_method("unreserve"):
-				target_station.unreserve(bot_id)
-			
-			retry_count = 0
-			current_step += 1
-			_go_to_next_step()
-		else:
-			print("[BOT %d] ⚠️ Failed to take from pot" % bot_id)
-			_handle_station_failure()
-		return
-	
+	# For Chopping and Cooking: process then take
 	_call_interact(target_station)
 	
 	var item_node = _take_item_node_from(target_station)
 	if item_node:
+		# NEW: Pass recipe context to the ingredient
+		if item_node.has_method("apply_stage"):
+			item_node.apply_stage(station_type, current_recipe_id)
+		
 		carried_item = item_node
 		_pickup_item_visual(item_node)
 		print("[BOT %d] ⚙️ Processed at %s" % [bot_id, station_type])
@@ -526,7 +539,7 @@ func _process_at_station() -> void:
 	else:
 		push_error("[BOT %d] Failed to take processed item" % bot_id)
 		_handle_station_failure()
-
+								
 func _move_toward_target(delta: float) -> void:
 	var direction = (target_position - global_position).normalized()
 	var distance = global_position.distance_to(target_position)

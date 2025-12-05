@@ -4,6 +4,7 @@ extends Node2D
 var status: String = "raw"
 var _gm: Node = null
 var _scale_override: Vector2 = Vector2.ZERO
+var current_recipe_id: String = ""
 
 @onready var sprite: Sprite2D = $Sprite2D
 
@@ -37,9 +38,9 @@ const ICONS := {
 	"cooked_olives": preload("res://assets/ingredients/chopped_olives.png"),
 	"cooked_olive": preload("res://assets/ingredients/chopped_olives.png"),
 	"cooked_potato": preload("res://assets/ingredients/pot.png"),
-	"cooked_carrot": preload("res://assets/ingredients/pot.png"),
+	"cooked_carrot": preload("res://assets/ingredients/cooked_veggies.png"),
 	"cooked_onion": preload("res://assets/ingredients/pot.png"),
-	"cooked_broccoli": preload("res://assets/ingredients/pot.png"),
+	"cooked_broccoli": preload("res://assets/ingredients/cooked_veggies.png"),
 	"cooked_veggies": preload("res://assets/ingredients/cooked_veggies.png"),
 	
 	# Final dishes (using recipe names as keys)
@@ -126,7 +127,7 @@ func set_type(t: String) -> void:
 	else:
 		status = "raw"
 	
-	print("[INGREDIENT] set_type('%s') -> status='%s'" % [type, status])
+	#print("[INGREDIENT] set_type('%s') -> status='%s'" % [type, status])
 	update_visual()
 
 func get_type() -> String:
@@ -149,14 +150,14 @@ func update_visual() -> void:
 	var tex = ICONS.get(type, null)
 	if tex:
 		sprite.texture = tex
-		print("[INGREDIENT] Visual updated: type='%s', texture loaded" % type)
+		#print("[INGREDIENT] Visual updated: type='%s', texture loaded" % type)
 	else:
 		# Try base name fallback
 		var base := _base_name(type)
 		var tex2 = ICONS.get(base, null)
 		if tex2:
 			sprite.texture = tex2
-			print("[INGREDIENT] Visual updated: base='%s', texture loaded" % base)
+			#print("[INGREDIENT] Visual updated: base='%s', texture loaded" % base)
 		else:
 			# Show a placeholder
 			sprite.visible = true
@@ -181,7 +182,7 @@ func _apply_scale() -> void:
 		final_scale = _scale_override
 	
 	scale = final_scale
-	print("[INGREDIENT] Scale set: %v (type: %s, mult: %.2f)" % [final_scale, type, scale_mult])
+	#print("[INGREDIENT] Scale set: %v (type: %s, mult: %.2f)" % [final_scale, type, scale_mult])
 
 func _base_name(t: String) -> String:
 	if t.begins_with("chopped_"):
@@ -190,8 +191,11 @@ func _base_name(t: String) -> String:
 		return t.substr(7)
 	return t
 
-func apply_stage(stage: String) -> void:
+func apply_stage(stage: String, recipe_id: String = "") -> void:
 	var base := _base_name(type)
+	
+	if recipe_id != "":
+		current_recipe_id = recipe_id
 	
 	match stage:
 		"Chopping":
@@ -203,12 +207,22 @@ func apply_stage(stage: String) -> void:
 		"Cooking":
 			if status in ["raw", "chopped"]:
 				status = "cooked"
-				# For olives, keep them as chopped_olives visually (or use a different cooked texture if you have one)
-				if base == "olive" or base == "olives":
+				
+				# Special handling for veggie stir fry - use cooked_veggies
+				if current_recipe_id == "veggie_stir_fry":
+					if base in ["carrot", "onion", "broccoli"]:
+						type = "cooked_veggies"
+						print("[INGREDIENT] Cooked for stir fry: %s -> cooked_veggies" % base)
+					else:
+						type = "cooked_%s" % base
+						print("[INGREDIENT] Cooked: %s" % type)
+				# For olives, keep them as chopped_olives visually
+				elif base == "olive" or base == "olives":
 					type = "cooked_olives"
+					print("[INGREDIENT] Cooked: %s" % type)
 				else:
 					type = "cooked_%s" % base
-				print("[INGREDIENT] Cooked: %s" % type)
+					print("[INGREDIENT] Cooked: %s" % type)
 		
 		"Serving":
 			if base == "tomato" or type.find("tomato") != -1:
@@ -224,7 +238,7 @@ func apply_stage(stage: String) -> void:
 			push_warning("[INGREDIENT] Unknown stage: %s" % stage)
 	
 	update_visual()
-
+	
 func pick_up(by_node: Node, offset: Vector2 = Vector2(0, -16)) -> void:
 	var old_parent = get_parent()
 	if old_parent:
