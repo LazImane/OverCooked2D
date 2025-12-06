@@ -1,9 +1,56 @@
-[gd_scene load_steps=2 format=3 uid="uid://ccixiwch6dobo"]
+[gd_scene load_steps=10 format=3 uid="uid://ccixiwch6dobo"]
 
 [ext_resource type="Script" uid="uid://bpofgdary6o0" path="res://scripts/main_menu.gd" id="1_yqorp"]
+[ext_resource type="Texture2D" uid="uid://bnerbkw16bgiq" path="res://assets/mainMenu/wmremove-transformed.jpeg" id="2_0ykhv"]
+[ext_resource type="Texture2D" uid="uid://dspq21dbd0wlg" path="res://assets/mainMenu/Overcooked2D-06-12-2025-removebg-preview.png" id="3_2wh52"]
+[ext_resource type="Texture2D" uid="uid://cbrv1mcrqiqo4" path="res://assets/mainMenu/istockphoto-1079800720-612x612-removebg-preview.png" id="4_ucygd"]
+[ext_resource type="Texture2D" uid="uid://bl3gf4iyxvof6" path="res://assets/mainMenu/1000_F_228273832_cqKu51YTKmyDQxdwwoEnGaUTFrstr06K-removebg-preview.png" id="5_mipys"]
+[ext_resource type="Texture2D" uid="uid://bk8pruhy6b6cx" path="res://assets/mainMenu/ginger-cat-sits-back-raised-600nw-2255675491-removebg-preview.png" id="6_8a8k8"]
+[ext_resource type="Texture2D" uid="uid://bc6766vvbcm0r" path="res://assets/mainMenu/large-overweight-tabby-white-cat-260nw-1829211953-removebg-preview.png" id="7_7la6k"]
+
+[sub_resource type="FontVariation" id="FontVariation_2wh52"]
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_2wh52"]
+bg_color = Color(0.90588236, 0.6156863, 0.3372549, 1)
+corner_radius_top_left = 16
+corner_radius_top_right = 16
+corner_radius_bottom_right = 16
+corner_radius_bottom_left = 16
+shadow_color = Color(3.465414e-06, 0, 0.76362056, 0.9843137)
+shadow_size = 7
 
 [node name="MainMenu" type="Node2D"]
 script = ExtResource("1_yqorp")
+
+[node name="Sprite2D" type="Sprite2D" parent="."]
+position = Vector2(562, 346)
+scale = Vector2(0.34621328, 0.34387758)
+texture = ExtResource("2_0ykhv")
+
+[node name="Sprite2D2" type="Sprite2D" parent="."]
+position = Vector2(552, 112)
+scale = Vector2(0.9277344, 0.9)
+texture = ExtResource("3_2wh52")
+
+[node name="Sprite2D3" type="Sprite2D" parent="."]
+position = Vector2(223.00002, 544)
+scale = Vector2(0.10825162, 0.19914213)
+texture = ExtResource("4_ucygd")
+
+[node name="Sprite2D4" type="Sprite2D" parent="."]
+position = Vector2(158, 563.00006)
+scale = Vector2(0.22079244, 0.26950568)
+texture = ExtResource("5_mipys")
+
+[node name="Sprite2D5" type="Sprite2D" parent="."]
+position = Vector2(374.00003, 556)
+scale = Vector2(0.20901555, 0.2628017)
+texture = ExtResource("6_8a8k8")
+
+[node name="Sprite2D6" type="Sprite2D" parent="."]
+position = Vector2(782.5605, 604.94806)
+scale = Vector2(0.61763847, 0.5353432)
+texture = ExtResource("7_7la6k")
 
 [node name="Button_Manager" type="Control" parent="."]
 layout_mode = 3
@@ -13,46 +60,57 @@ offset_bottom = 40.0
 
 [node name="One Agent" type="Button" parent="Button_Manager"]
 layout_mode = 0
-offset_left = 354.0
-offset_top = 41.0
-offset_right = 793.0
-offset_bottom = 135.0
-text = "Start Game With One Agents"
+offset_left = 506.0
+offset_top = 227.0
+offset_right = 858.0
+offset_bottom = 273.0
+theme_override_fonts/font = SubResource("FontVariation_2wh52")
+theme_override_font_sizes/font_size = 22
+theme_override_styles/normal = SubResource("StyleBoxFlat_2wh52")
+text = "Start Game With One Agent"
 
-[node name="Two Agents" type="Button" parent="Button_Manager"]
+[node name="One Agent2" type="Button" parent="Button_Manager"]
 layout_mode = 0
-offset_left = 355.0
-offset_top = 141.0
-offset_right = 791.0
-offset_bottom = 234.0
+offset_left = 507.0
+offset_top = 294.0
+offset_right = 859.0
+offset_bottom = 340.0
+theme_override_font_sizes/font_size = 22
+theme_override_styles/normal = SubResource("StyleBoxFlat_2wh52")
 text = "Start Game With Two Agents"
 
-[node name="Three Agents" type="Button" parent="Button_Manager"]
+[node name="One Agent3" type="Button" parent="Button_Manager"]
 layout_mode = 0
-offset_left = 353.0
-offset_top = 240.0
-offset_right = 794.0
-offset_bottom = 331.0
+offset_left = 506.0
+offset_top = 362.0
+offset_right = 858.0
+offset_bottom = 408.0
+theme_override_font_sizes/font_size = 22
+theme_override_styles/normal = SubResource("StyleBoxFlat_2wh52")
 text = "Start Game With Three Agents"
 
-[node name="Four Agents" type="Button" parent="Button_Manager"]
+[node name="One Agent4" type="Button" parent="Button_Manager"]
 layout_mode = 0
-offset_left = 356.0
-offset_top = 338.0
-offset_right = 797.0
-offset_bottom = 429.0
+offset_left = 506.0
+offset_top = 428.0
+offset_right = 858.0
+offset_bottom = 474.0
+theme_override_font_sizes/font_size = 23
+theme_override_styles/normal = SubResource("StyleBoxFlat_2wh52")
 text = "Start Game With Four Agents"
 
-[node name="Five Agents" type="Button" parent="Button_Manager"]
+[node name="One Agent5" type="Button" parent="Button_Manager"]
 layout_mode = 0
-offset_left = 358.0
-offset_top = 441.0
-offset_right = 799.0
-offset_bottom = 532.0
+offset_left = 507.0
+offset_top = 500.0
+offset_right = 859.0
+offset_bottom = 546.0
+theme_override_font_sizes/font_size = 24
+theme_override_styles/normal = SubResource("StyleBoxFlat_2wh52")
 text = "Start Game With Five Agents"
 
 [connection signal="pressed" from="Button_Manager/One Agent" to="." method="_on_one_agent_pressed"]
-[connection signal="pressed" from="Button_Manager/Two Agents" to="." method="_on_two_agents_pressed"]
-[connection signal="pressed" from="Button_Manager/Three Agents" to="." method="_on_three_agents_pressed"]
-[connection signal="pressed" from="Button_Manager/Four Agents" to="." method="_on_four_agents_pressed"]
-[connection signal="pressed" from="Button_Manager/Five Agents" to="." method="_on_five_agents_pressed"]
+[connection signal="pressed" from="Button_Manager/One Agent2" to="." method="_on_two_agents_pressed"]
+[connection signal="pressed" from="Button_Manager/One Agent3" to="." method="_on_three_agents_pressed"]
+[connection signal="pressed" from="Button_Manager/One Agent4" to="." method="_on_four_agents_pressed"]
+[connection signal="pressed" from="Button_Manager/One Agent5" to="." method="_on_five_agents_pressed"]
