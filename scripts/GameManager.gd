@@ -25,6 +25,7 @@ var _current_time: float = 0.0
 var _orders_completed: int = 0
 var _pending_orders: int = 0
 var _in_progress_orders: int = 0
+var _bot_recipes: Dictionary = {}  # bot_id -> recipe_id
 
 
 func _ready() -> void:
@@ -32,8 +33,8 @@ func _ready() -> void:
 	_register_stations()
 	_setup_recipes()
 	_setup_orders()
-	_rebuild_order_queue()
-	print("[GM] Ready | Orders: %d | Total ingredients: %d" % [orders.size(), _total_needed])
+	# DON'T build queue yet - let bots request tasks on demand
+	print("[GM] Ready | Orders: %d" % orders.size())
 
 
 # ==================== TIMER MANAGEMENT ====================
@@ -115,7 +116,7 @@ func _register_stations() -> void:
 	print("[GM] Registered stations:", stations_by_type.keys())
 
 
-# ==================== NEW: SERVING STATION LOOKUP ====================
+# ==================== SERVING STATION LOOKUP ====================
 func find_serving_station_for_recipe(recipe_id: String) -> Node:
 	"""Find the correct serving station for a specific recipe"""
 	if not stations_by_type.has("Serving"):
@@ -260,7 +261,7 @@ func _rebuild_order_queue() -> void:
 			})
 			_total_needed += 1
 
-	print("[GM] Orders prepared: %d orders, %d ingredients queued" %
+	print("[GM] Queue built: %d orders, %d ingredients queued" %
 		[orders.size(), _total_needed])
 
 
@@ -288,19 +289,39 @@ func _prepare_recipe_order(recipe_id: String) -> void:
 
 # ==================== BOT TASK ASSIGNMENT ====================
 func request_next_ingredient(bot_id: int) -> Dictionary:
+	# FIRST TIME: Build the queue if it's empty and we have orders
+	if _order_queue.is_empty() and orders.size() > 0:
+		_rebuild_order_queue()
+		print("[GM] 📋 Building initial task queue: %d tasks from %d orders" % [_order_queue.size(), orders.size()])
+	
+	# Check if this bot is already committed to a recipe
+	var bot_current_recipe = _bot_recipes.get(bot_id, "")
+	
+	# If bot has a recipe in progress, ONLY give tasks from that recipe
+	if bot_current_recipe != "":
+		var task = _find_task_for_recipe(bot_current_recipe)
+		if task.size() > 0:
+			# Found a task for the current recipe, continue with it
+			_remove_task_from_queue(task)
+			_mark_recipe_in_progress(task)
+			print("[GM] 🔒 Bot %d continuing recipe '%s' - %s (%d remaining)" % 
+				[bot_id, bot_current_recipe, task.get("ingredient_id", ""), _order_queue.size()])
+			return task
+		else:
+			# Recipe complete! Bot is now free for a new recipe
+			print("[GM] ✅ Bot %d completed recipe '%s', now available for new tasks" % [bot_id, bot_current_recipe])
+			_bot_recipes.erase(bot_id)
+			bot_current_recipe = ""
+	
+	# Bot is free - spawn new orders if needed (only when bots need work)
 	if endless_mode:
-		var active_orders = _pending_orders + _in_progress_orders
 		var available_tasks = _order_queue.size()
+		var free_bots = _count_free_bots()
 		
-		var total_bots = get_tree().get_nodes_in_group("bots").size()
-		if total_bots == 0:
-			total_bots = 5
-		
-		var needed_tasks = total_bots * 3
-		
-		if available_tasks < needed_tasks:
-			var orders_to_spawn = ceili(float(needed_tasks - available_tasks) / 3.0)
-			print("[GM] 📋 Low on tasks (%d), spawning %d new orders for %d bots" % [available_tasks, orders_to_spawn, total_bots])
+		# Only spawn if we don't have enough tasks for free bots
+		if available_tasks < free_bots:
+			var orders_to_spawn = free_bots - available_tasks
+			print("[GM] 📋 %d free bots need work, spawning %d new orders" % [free_bots, orders_to_spawn])
 			for i in range(orders_to_spawn):
 				_spawn_new_order()
 	
@@ -308,22 +329,58 @@ func request_next_ingredient(bot_id: int) -> Dictionary:
 		print("[GM] No more ingredients available for bot %d" % bot_id)
 		return {}
 	
-	# PRIORITY SYSTEM: Find the best task based on recipe completion progress
+	# Find the best task (prioritize recipes closest to completion)
 	var best_task_idx = _find_best_task_index()
 	
 	if best_task_idx == -1:
 		print("[GM] No valid tasks found for bot %d" % bot_id)
 		return {}
 	
-	# Remove the selected task from the queue
 	var task: Dictionary = _order_queue[best_task_idx]
 	_order_queue.remove_at(best_task_idx)
 	
 	var recipe_id: String = task.get("recipe_id", "")
 	var ingredient_id: String = task.get("ingredient_id", "")
+	
+	# COMMIT this bot to this recipe
+	_bot_recipes[bot_id] = recipe_id
+	
+	# Mark recipe as in progress if needed
+	_mark_recipe_in_progress(task)
+	
+	print("[GM] 🆕 Bot %d starting NEW recipe '%s' - %s (%d remaining | %d pending | %d in progress)" %
+		[bot_id, recipe_id, ingredient_id, _order_queue.size(), _pending_orders, _in_progress_orders])
+	return task
+
+
+func _count_free_bots() -> int:
+	"""Count how many bots are NOT currently committed to a recipe"""
+	var total_bots = get_tree().get_nodes_in_group("bots").size()
+	var busy_bots = _bot_recipes.size()
+	return max(0, total_bots - busy_bots)
+
+
+func _find_task_for_recipe(recipe_id: String) -> Dictionary:
+	"""Find any task for a specific recipe"""
+	for task in _order_queue:
+		if task.get("recipe_id", "") == recipe_id:
+			return task
+	return {}
+
+
+func _remove_task_from_queue(task: Dictionary) -> void:
+	"""Remove a specific task from the queue"""
+	for i in range(_order_queue.size()):
+		if _order_queue[i] == task:
+			_order_queue.remove_at(i)
+			return
+
+
+func _mark_recipe_in_progress(task: Dictionary) -> void:
+	"""Mark a recipe as in progress and start timer"""
+	var recipe_id: String = task.get("recipe_id", "")
 	var order_index: int = task.get("order_index", -1)
 	
-	# Start timer when FIRST ingredient of recipe is assigned
 	if order_index >= 0 and order_index < orders.size():
 		if orders[order_index]["status"] == "pending":
 			orders[order_index]["status"] = "in_progress"
@@ -332,15 +389,13 @@ func request_next_ingredient(bot_id: int) -> Dictionary:
 			_pending_orders -= 1
 			_in_progress_orders += 1
 			print("[GM] 🚀 Recipe '%s' now IN PROGRESS (order #%d)" % [recipe_id, order_index])
-	
-	print("[GM] Assigned '%s' (%s) to bot %d [PRIORITY] (%d remaining | %d pending | %d in progress)" %
-		[ingredient_id, recipe_id, bot_id, _order_queue.size(), _pending_orders, _in_progress_orders])
-	return task
+
+
 func _find_best_task_index() -> int:
 	"""
 	Find the best task to assign next, prioritizing:
-	1. Recipes closest to completion (fewer ingredients remaining)
-	2. Recipes that have been started (in_progress)
+	1. Recipes that other bots are already working on (helps finish recipes faster)
+	2. Recipes with fewer ingredients remaining
 	3. Older recipes (lower order_index)
 	"""
 	if _order_queue.is_empty():
@@ -354,12 +409,19 @@ func _find_best_task_index() -> int:
 			recipe_remaining[recipe_id] = 0
 		recipe_remaining[recipe_id] += 1
 	
+	# Count how many bots are working on each recipe
+	var recipe_bot_counts: Dictionary = {}
+	for recipe_id in _bot_recipes.values():
+		if not recipe_bot_counts.has(recipe_id):
+			recipe_bot_counts[recipe_id] = 0
+		recipe_bot_counts[recipe_id] += 1
+	
 	# Find task with best priority score
 	var best_idx = 0
-	var best_score = _calculate_priority_score(_order_queue[0], recipe_remaining)
+	var best_score = _calculate_priority_score(_order_queue[0], recipe_remaining, recipe_bot_counts)
 	
 	for i in range(1, _order_queue.size()):
-		var score = _calculate_priority_score(_order_queue[i], recipe_remaining)
+		var score = _calculate_priority_score(_order_queue[i], recipe_remaining, recipe_bot_counts)
 		if score < best_score:  # Lower score = higher priority
 			best_score = score
 			best_idx = i
@@ -367,14 +429,14 @@ func _find_best_task_index() -> int:
 	return best_idx
 
 
-func _calculate_priority_score(task: Dictionary, recipe_remaining: Dictionary) -> float:
+func _calculate_priority_score(task: Dictionary, recipe_remaining: Dictionary, recipe_bot_counts: Dictionary) -> float:
 	"""
 	Calculate priority score for a task. Lower = higher priority.
 	
 	Scoring system:
+	- HUGE bonus if other bots are already working on this recipe (teamwork!)
 	- Base score: number of ingredients remaining in this recipe
-	- Bonus (-1000): recipe is in_progress (started)
-	- Penalty (+0.1 * order_index): favor older orders slightly
+	- Small penalty for newer orders
 	"""
 	var recipe_id = task["recipe_id"]
 	var order_idx = task.get("order_index", 0)
@@ -382,15 +444,18 @@ func _calculate_priority_score(task: Dictionary, recipe_remaining: Dictionary) -
 	# Base priority: fewer remaining ingredients = higher priority
 	var score = float(recipe_remaining.get(recipe_id, 999))
 	
-	# Strong bonus for recipes already in progress
-	if order_idx >= 0 and order_idx < orders.size():
-		if orders[order_idx]["status"] == "in_progress":
-			score -= 1000.0
+	# CRITICAL: If other bots are working on this recipe, give it MASSIVE priority
+	# This ensures recipes get completed quickly with teamwork
+	var bots_on_recipe = recipe_bot_counts.get(recipe_id, 0)
+	if bots_on_recipe > 0:
+		score -= 10000.0 * bots_on_recipe  # More bots = even higher priority
+		print("[GM] 🔥 Recipe '%s' has %d bots working - HIGH PRIORITY!" % [recipe_id, bots_on_recipe])
 	
-	# Small penalty for newer orders (favor completing older ones)
+	# Small penalty for newer orders (favor completing older ones first)
 	score += order_idx * 0.1
 	
 	return score
+
 
 # ==================== RECIPE QUERIES ====================
 func get_recipe_ingredients(recipe_id: String) -> Array:

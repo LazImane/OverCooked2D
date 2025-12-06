@@ -33,11 +33,12 @@ var wait_timer: float = 0.0
 var max_wait_time: float = 2.0
 var retry_count: int = 0
 var max_retries: int = 3
+var _ready_complete: bool = false
 
 @onready var sprite = $Sprite2D
 
 func _ready() -> void:
-	add_to_group("bots")  # NEW: Add to bots group for counting
+	add_to_group("bots")
 	playAnim(true)
 	_gm = get_tree().get_first_node_in_group("game_manager")
 	if not _gm:
@@ -49,14 +50,24 @@ func _ready() -> void:
 		_gm.connect("new_orders_available", _on_new_orders_available)
 	
 	_find_stations()
+	
+	# CRITICAL FIX: Don't request task immediately during _ready
+	# Wait for the scene to be fully loaded
+	await get_tree().process_frame
+	_ready_complete = true
 	_request_next_task()
 	
 	print("[BOT %d] Ready | Default recipe: %s" % [bot_id, recipe_name])
 
+
+# Also update _on_new_orders_available to check if ready:
 func _on_new_orders_available() -> void:
+	if not _ready_complete:
+		return
 	if current_action == Action.IDLE:
 		print("[BOT %d] 📢 New orders available! Requesting task..." % bot_id)
 		_request_next_task()
+
 
 func _physics_process(delta: float) -> void:
 	match current_action:
