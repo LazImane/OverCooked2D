@@ -1,0 +1,58 @@
+[gd_scene load_steps=2 format=3 uid="uid://ccixiwch6dobo"]
+
+[ext_resource type="Script" uid="uid://bpofgdary6o0" path="res://scripts/main_menu.gd" id="1_yqorp"]
+
+[node name="MainMenu" type="Node2D"]
+script = ExtResource("1_yqorp")
+
+[node name="Button_Manager" type="Control" parent="."]
+layout_mode = 3
+anchors_preset = 0
+offset_right = 40.0
+offset_bottom = 40.0
+
+[node name="One Agent" type="Button" parent="Button_Manager"]
+layout_mode = 0
+offset_left = 354.0
+offset_top = 41.0
+offset_right = 793.0
+offset_bottom = 135.0
+text = "Start Game With One Agents"
+
+[node name="Two Agents" type="Button" parent="Button_Manager"]
+layout_mode = 0
+offset_left = 355.0
+offset_top = 141.0
+offset_right = 791.0
+offset_bottom = 234.0
+text = "Start Game With Two Agents"
+
+[node name="Three Agents" type="Button" parent="Button_Manager"]
+layout_mode = 0
+offset_left = 353.0
+offset_top = 240.0
+offset_right = 794.0
+offset_bottom = 331.0
+text = "Start Game With Three Agents"
+
+[node name="Four Agents" type="Button" parent="Button_Manager"]
+layout_mode = 0
+offset_left = 356.0
+offset_top = 338.0
+offset_right = 797.0
+offset_bottom = 429.0
+text = "Start Game With Four Agents"
+
+[node name="Five Agents" type="Button" parent="Button_Manager"]
+layout_mode = 0
+offset_left = 358.0
+offset_top = 441.0
+offset_right = 799.0
+offset_bottom = 532.0
+text = "Start Game With Five Agents"
+
+[connection signal="pressed" from="Button_Manager/One Agent" to="." method="_on_one_agent_pressed"]
+[connection signal="pressed" from="Button_Manager/Two Agents" to="." method="_on_two_agents_pressed"]
+[connection signal="pressed" from="Button_Manager/Three Agents" to="." method="_on_three_agents_pressed"]
+[connection signal="pressed" from="Button_Manager/Four Agents" to="." method="_on_four_agents_pressed"]
+[connection signal="pressed" from="Button_Manager/Five Agents" to="." method="_on_five_agents_pressed"]

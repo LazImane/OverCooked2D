@@ -1,5 +1,6 @@
-[gd_scene load_steps=22 format=3 uid="uid://bfksb6w8ep7oq"]
+[gd_scene load_steps=23 format=3 uid="uid://bfksb6w8ep7oq"]
 
+[ext_resource type="Script" uid="uid://70qlnqwb1jwv" path="res://scripts/game.gd" id="1_kvpfn"]
 [ext_resource type="Texture2D" uid="uid://dpa6d8byrp3t7" path="res://assets/pixelinterior_LRK/floorswalls_LRK.png" id="1_vtaks"]
 [ext_resource type="Texture2D" uid="uid://ddldpwcweumie" path="res://assets/pixelinterior_LRK/kitchen_LRK.png" id="2_kvpfn"]
 [ext_resource type="Texture2D" uid="uid://cefmeneue6dsj" path="res://assets/pixelinterior_LRK/cabinets_LRK.png" id="4_kvuet"]
@@ -1615,6 +1616,7 @@ size = Vector2(18, 15)
 size = Vector2(19, 19)
 
 [node name="Game" type="Node2D"]
+script = ExtResource("1_kvpfn")
 
 [node name="TileMap" type="TileMap" parent="."]
 position = Vector2(0, -1)
@@ -1725,10 +1727,9 @@ zoom = Vector2(2.3, 2.3)
 collision_layer = 4
 
 [node name="Bot4" parent="." instance=ExtResource("10_vtaks")]
-collision_layer = 4
+collision_layer = 16
 
 [node name="Bot5" parent="." instance=ExtResource("10_vtaks")]
-collision_layer = 4
 
 [node name="CanvasLayer" type="CanvasLayer" parent="."]
 
