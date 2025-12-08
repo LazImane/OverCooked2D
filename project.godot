@@ -14,3 +14,8 @@ config/name="overccoked2D"
 run/main_scene="uid://ccixiwch6dobo"
 config/features=PackedStringArray("4.5", "Forward Plus")
 config/icon="res://icon.svg"
+
+[editor]
+
+movie_writer/video_quality=1.0
+movie_writer/movie_file="C:/Users/Kanzy/Documents/GitHub/OverCooked2D/video.avi"

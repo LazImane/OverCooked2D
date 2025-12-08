@@ -26,6 +26,8 @@ var _orders_completed: int = 0
 var _pending_orders: int = 0
 var _in_progress_orders: int = 0
 var _bot_recipes: Dictionary = {}  # bot_id -> recipe_id
+var moyennetemps: Array = []
+var summoy : float = 0.0
 
 
 func _ready() -> void:
@@ -64,15 +66,18 @@ func _complete_recipe_timer(recipe_id: String) -> float:
 	if oldest_key == "":
 		push_warning("[GM] No timer found for recipe '%s'" % recipe_id)
 		return 0.0
-	
+
 	var start_time = active_recipe_timers[oldest_key]
 	var completion_time = _current_time - start_time
+
 	
 	completed_recipes.append({
 		"recipe_id": recipe_id,
 		"score": completion_time,
 		"completed_at": _current_time
 	})
+	moyennetemps.append(completion_time)
+
 	
 	active_recipe_timers.erase(oldest_key)
 	_orders_completed += 1
@@ -625,3 +630,16 @@ func _log_stats():
 	
 	print("[GM] 📈 STATS @ %.0fs: Completed: %d | Active: %d | Queue: %d | Bots: %d/%d active" % 
 		[_current_time, _orders_completed, active_recipe_timers.size(), _order_queue.size(), total_bots - idle_bots, total_bots])
+	stats()
+		
+func moyenne():
+	summoy = 0.0
+	for i in range(moyennetemps.size()): 
+		summoy += moyennetemps[i]
+		print(summoy)
+		
+func stats(): 
+	moyenne()
+	if(_current_time >= 120.0):
+		print("MOYENNE IN 120 SECONDS (2 mins): ", float(summoy) / moyennetemps.size())
+		print("IN 120 SECONDS (2mins) WE MADE THIS AMOUNT OF RECIPES :  " , _orders_completed)
