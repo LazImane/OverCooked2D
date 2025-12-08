@@ -51,23 +51,18 @@ func _ready() -> void:
 	
 	_find_stations()
 	
-	# CRITICAL FIX: Don't request task immediately during _ready
-	# Wait for the scene to be fully loaded
 	await get_tree().process_frame
 	_ready_complete = true
 	_request_next_task()
 	
 	print("[BOT %d] Ready | Default recipe: %s" % [bot_id, recipe_name])
 
-
-# Also update _on_new_orders_available to check if ready:
 func _on_new_orders_available() -> void:
 	if not _ready_complete:
 		return
 	if current_action == Action.IDLE:
 		print("[BOT %d] 📢 New orders available! Requesting task..." % bot_id)
 		_request_next_task()
-
 
 func _physics_process(delta: float) -> void:
 	match current_action:
@@ -92,14 +87,22 @@ func _physics_process(delta: float) -> void:
 	move_and_slide()
 
 func _request_next_task() -> void:
-	# Clean up any carried items
+	var should_cleanup = true
 	if carried_item and is_instance_valid(carried_item):
-		print("[BOT %d] ⚠️ Cleaning up carried item before new task" % bot_id)
+		if current_step < flow_steps.size():
+			print("[BOT %d] 🔒 Keeping carried item - task not complete (step %d/%d)" % 
+				[bot_id, current_step, flow_steps.size()])
+			should_cleanup = false
+		else:
+			print("[BOT %d] ⚠️ Completed flow but still holding item - this shouldn't happen!" % bot_id)
+			should_cleanup = true
+	
+	if should_cleanup and carried_item and is_instance_valid(carried_item):
+		print("[BOT %d] 🗑️ Cleaning up carried item after task completion" % bot_id)
 		carried_item.queue_free()
 		carried_item = null
 		carried_item_type = ""
 	
-	# Release any reserved station
 	if target_station and target_station.has_method("unreserve"):
 		target_station.unreserve(bot_id)
 	target_station = null
@@ -138,9 +141,15 @@ func _request_next_task() -> void:
 		[bot_id, current_ingredient, flow_recipe_id, flow_steps])
 	
 	_go_to_next_step()
-
+		
 func _go_to_next_step() -> void:
 	if current_step >= flow_steps.size():
+		if carried_item and is_instance_valid(carried_item):
+			push_error("[BOT %d] ❌ Completed flow but still carrying item! This is a bug!" % bot_id)
+			carried_item.queue_free()
+			carried_item = null
+			carried_item_type = ""
+		
 		if _gm and _gm.has_method("notify_served"):
 			_gm.notify_served(current_ingredient)
 		_request_next_task()
@@ -148,17 +157,24 @@ func _go_to_next_step() -> void:
 	
 	var station_type: String = flow_steps[current_step]
 	
-	# Find appropriate station
+	if station_type == "Ingredient" and carried_item:
+		push_error("[BOT %d] ❌ STATE ERROR: Going to Ingredient but already carrying item!" % bot_id)
+		carried_item.queue_free()
+		carried_item = null
+		carried_item_type = ""
+	
 	if station_type == "Serving":
 		target_station = _find_serving_station_for_recipe(current_recipe_id)
 		if not target_station:
-			push_error("[BOT %d] ❌ No serving station for recipe '%s' - abandoning task" % [bot_id, current_recipe_id])
 			if carried_item and is_instance_valid(carried_item):
-				carried_item.queue_free()
-				carried_item = null
-				carried_item_type = ""
-			_request_next_task()
-			return
+				print("[BOT %d] ⏳ Serving station for '%s' temporarily busy, waiting..." % [bot_id, current_recipe_id])
+				wait_timer = 0.0
+				current_action = Action.WAIT_FOR_STATION
+				return
+			else:
+				push_error("[BOT %d] ❌ No serving station for recipe '%s' - abandoning task" % [bot_id, current_recipe_id])
+				_request_next_task()
+				return
 	else:
 		target_station = _find_best_station(station_type)
 	
@@ -167,7 +183,6 @@ func _go_to_next_step() -> void:
 		current_action = Action.IDLE
 		return
 	
-	# Try to reserve the station
 	if target_station.has_method("reserve"):
 		if not target_station.reserve(bot_id):
 			print("[BOT %d] ⏳ Station %s reserved by another bot, waiting..." % [bot_id, station_type])
@@ -181,18 +196,14 @@ func _go_to_next_step() -> void:
 	print("[BOT %d] → Moving to %s (%s)" % [bot_id, station_type, target_station.name])
 
 func _find_serving_station_for_recipe(recipe_id: String) -> Node:
-	"""Find the serving station that accepts this recipe"""
 	if _gm and _gm.has_method("find_serving_station_for_recipe"):
 		var station = _gm.find_serving_station_for_recipe(recipe_id)
 		if station:
 			print("[BOT %d] 🎯 Found serving station '%s' for recipe '%s'" % [bot_id, station.name, recipe_id])
-			return station
-	
-	# No dedicated station found - this is a critical error
+		return station
 	return null
 
 func _find_best_station(station_type: String) -> Node:
-	"""Find the best available station using load balancing"""
 	if not _gm or not _gm.has_method("_register_stations"):
 		return stations.get(station_type)
 	
@@ -204,28 +215,23 @@ func _find_best_station(station_type: String) -> Node:
 	if available.is_empty():
 		return null
 	
-	# Find best station by availability AND distance
 	var best_station = null
 	var best_score = INF
 	
 	for station in available:
-		# Check if station is available
 		if station.has_method("is_available") and not station.is_available():
 			continue
 		
-		# Calculate score (distance + penalty for occupied)
 		var distance = global_position.distance_to(station.global_position)
 		var score = distance
 		
-		# Add penalty if station has ingredient (prefer empty stations)
 		if station.has_method("has_ingredient") and station.has_ingredient():
-			score += 200.0  # penalty
+			score += 200.0
 		
 		if score < best_score:
 			best_score = score
 			best_station = station
 	
-	# If no available station, use closest one anyway
 	if not best_station:
 		var closest_distance = INF
 		for station in available:
@@ -275,10 +281,16 @@ func _take_from_station() -> void:
 			current_action = Action.WAIT_FOR_STATION
 			return
 		
-		print("[BOT %d] 🏭 Spawning %s at Ingredient station" % [bot_id, current_ingredient])
+		var ingredient_to_spawn = current_ingredient
+		if ingredient_to_spawn == "":
+			push_error("[BOT %d] ❌ Trying to spawn ingredient but current_ingredient is empty!" % bot_id)
+			_request_next_task()
+			return
+		
+		print("[BOT %d] 🏭 Spawning %s at Ingredient station" % [bot_id, ingredient_to_spawn])
 		
 		if _gm and _gm.has_method("spawn_ingredient"):
-			var item_node = _gm.spawn_ingredient(current_ingredient, target_station.get_parent())
+			var item_node = _gm.spawn_ingredient(ingredient_to_spawn, target_station.get_parent())
 			
 			if item_node:
 				if target_station.has_method("place_item"):
@@ -296,11 +308,10 @@ func _take_from_station() -> void:
 						var taken_item = _take_item_node_from(target_station)
 						if taken_item:
 							carried_item = taken_item
-							carried_item_type = current_ingredient
+							carried_item_type = ingredient_to_spawn
 							_pickup_item_visual(taken_item)
-							print("[BOT %d] 📦 Took: %s" % [bot_id, current_ingredient])
+							print("[BOT %d] 📦 Took: %s" % [bot_id, ingredient_to_spawn])
 							
-							# Release station reservation
 							if target_station.has_method("unreserve"):
 								target_station.unreserve(bot_id)
 							
@@ -320,7 +331,7 @@ func _take_from_station() -> void:
 					item_node.queue_free()
 					_handle_station_failure()
 			else:
-				push_error("[BOT %d] Failed to spawn ingredient" % bot_id)
+				push_error("[BOT %d] Failed to spawn ingredient '%s'" % [bot_id, ingredient_to_spawn])
 				_handle_station_failure()
 		else:
 			push_error("[BOT %d] GameManager missing spawn_ingredient method" % bot_id)
@@ -339,7 +350,6 @@ func _take_from_station() -> void:
 		_pickup_item_visual(item_node)
 		print("[BOT %d] 📦 Took processed item" % bot_id)
 		
-		# Release station
 		if target_station.has_method("unreserve"):
 			target_station.unreserve(bot_id)
 		
@@ -351,8 +361,6 @@ func _take_from_station() -> void:
 		wait_timer = 0.0
 		current_action = Action.WAIT_FOR_STATION
 
-# Replace the _wait_for_station function in bot.gd:
-
 func _wait_for_station(delta: float) -> void:
 	_stop(delta)
 	wait_timer += delta
@@ -362,29 +370,38 @@ func _wait_for_station(delta: float) -> void:
 		return
 	
 	if wait_timer >= max_wait_time:
+		var station_type: String = flow_steps[current_step]
+		
+		# CRITICAL: If carrying ingredient for serving station, NEVER give up
+		if carried_item and is_instance_valid(carried_item) and station_type == "Serving":
+			print("[BOT %d] ⏳ Still waiting for serving station '%s' (carrying ingredient)..." % [bot_id, current_recipe_id])
+			wait_timer = 0.0
+			# Try to find the station again - it might be available now
+			_go_to_next_step()
+			return
+		
 		retry_count += 1
 		
-		# SPECIAL CASE: If we're carrying an ingredient, we MUST place it
 		if carried_item and is_instance_valid(carried_item):
 			if retry_count >= max_retries:
-				# Even after max retries, if carrying item, keep trying but wait longer
 				print("[BOT %d] ⚠️ Still carrying item after %d retries, extending wait..." % [bot_id, max_retries])
 				wait_timer = 0.0
-				max_wait_time = 4.0  # Wait longer
-				retry_count = max_retries - 1  # Keep just below max
+				max_wait_time = 4.0
+				retry_count = max_retries - 1
 				
-				# Try to find ANY valid station for this step
-				var station_type: String = flow_steps[current_step]
 				if target_station and target_station.has_method("unreserve"):
 					target_station.unreserve(bot_id)
 				
-				target_station = _find_best_station(station_type)
+				if station_type == "Serving":
+					target_station = _find_serving_station_for_recipe(current_recipe_id)
+				else:
+					target_station = _find_best_station(station_type)
+				
 				if target_station:
 					target_position = target_station.global_position
 					current_action = Action.MOVE
 				return
 		
-		# Normal retry logic for when NOT carrying an ingredient
 		if retry_count >= max_retries:
 			push_error("[BOT %d] ❌ Station timeout after %d retries, abandoning task" % [bot_id, max_retries])
 			
@@ -404,8 +421,10 @@ func _wait_for_station(delta: float) -> void:
 			if target_station and target_station.has_method("unreserve"):
 				target_station.unreserve(bot_id)
 			
-			var station_type: String = flow_steps[current_step]
-			target_station = _find_best_station(station_type)
+			if station_type == "Serving":
+				target_station = _find_serving_station_for_recipe(current_recipe_id)
+			else:
+				target_station = _find_best_station(station_type)
 			
 			if target_station:
 				target_position = target_station.global_position
@@ -416,22 +435,17 @@ func _wait_for_station(delta: float) -> void:
 func _handle_station_failure() -> void:
 	retry_count += 1
 	if retry_count >= max_retries:
-		# CRITICAL FIX: Don't abandon the ingredient if we're carrying it!
 		if carried_item and is_instance_valid(carried_item):
-			# We have an ingredient but can't place it - wait and retry with same ingredient
 			print("[BOT %d] ⚠️ Failed to place item after %d retries, waiting before retry..." % [bot_id, max_retries])
 			
-			# Release reservation on current station
 			if target_station and target_station.has_method("unreserve"):
 				target_station.unreserve(bot_id)
 			
-			# Reset retry count and try to find station again after a brief wait
 			retry_count = 0
 			wait_timer = 0.0
 			current_action = Action.WAIT_FOR_STATION
 			return
 		
-		# If we don't have an ingredient, we can safely abandon and get new task
 		push_error("[BOT %d] ❌ Failed after %d retries - abandoning task" % [bot_id, max_retries])
 		
 		if target_station and target_station.has_method("unreserve"):
@@ -454,24 +468,28 @@ func _place_on_station() -> void:
 	
 	var station_type: String = flow_steps[current_step]
 	
-	# For serving stations, verify it's the correct one
+	# CRITICAL FIX: For serving stations, verify recipe match BEFORE trying to place
 	if station_type == "Serving":
 		if "recipe_id" in target_station and target_station.recipe_id != "" and target_station.recipe_id != current_recipe_id:
 			push_error("[BOT %d] ❌ Wrong serving station! Expected '%s' but at '%s' - finding correct one" % 
 				[bot_id, current_recipe_id, target_station.recipe_id])
 			
-			# DON'T enter infinite loop - abandon task if we can't find right station
 			var correct_station = _find_serving_station_for_recipe(current_recipe_id)
 			if correct_station and correct_station != target_station:
+				# Release wrong station
+				if target_station.has_method("unreserve"):
+					target_station.unreserve(bot_id)
+				
 				target_station = correct_station
 				target_position = target_station.global_position
 				current_action = Action.MOVE
 				print("[BOT %d] 🔄 Moving to correct serving station '%s'" % [bot_id, target_station.name])
 				return
 			else:
-				# Can't find right station - abandon
-				push_error("[BOT %d] ❌ Cannot find correct serving station - abandoning" % bot_id)
-				_handle_station_failure()
+				# Can't find right station - it might be animating, wait
+				print("[BOT %d] ⏳ Correct serving station busy, waiting..." % bot_id)
+				wait_timer = 0.0
+				current_action = Action.WAIT_FOR_STATION
 				return
 	
 	var success := false
@@ -497,8 +515,15 @@ func _place_on_station() -> void:
 		
 		current_action = Action.PROCESS_ITEM
 	else:
-		push_error("[BOT %d] Failed to place item" % bot_id)
-		_handle_station_failure()
+		# CRITICAL: Don't call _handle_station_failure immediately
+		# The station might be temporarily busy (animating) - wait instead
+		if station_type == "Serving":
+			print("[BOT %d] ⏳ Serving station temporarily busy, waiting..." % bot_id)
+			wait_timer = 0.0
+			current_action = Action.WAIT_FOR_STATION
+		else:
+			push_error("[BOT %d] Failed to place item" % bot_id)
+			_handle_station_failure()
 
 func _process_at_station() -> void:
 	if not target_station:
@@ -517,7 +542,6 @@ func _process_at_station() -> void:
 		
 		print("[BOT %d] ✅ Placed on serving station: %s" % [bot_id, current_ingredient])
 		
-		# Release station
 		if target_station.has_method("unreserve"):
 			target_station.unreserve(bot_id)
 		
@@ -527,12 +551,10 @@ func _process_at_station() -> void:
 		_go_to_next_step()
 		return
 	
-	# For Chopping and Cooking: process then take
 	_call_interact(target_station)
 	
 	var item_node = _take_item_node_from(target_station)
 	if item_node:
-		# NEW: Pass recipe context to the ingredient
 		if item_node.has_method("apply_stage"):
 			item_node.apply_stage(station_type, current_recipe_id)
 		
@@ -540,7 +562,6 @@ func _process_at_station() -> void:
 		_pickup_item_visual(item_node)
 		print("[BOT %d] ⚙️ Processed at %s" % [bot_id, station_type])
 		
-		# Release station
 		if target_station.has_method("unreserve"):
 			target_station.unreserve(bot_id)
 		

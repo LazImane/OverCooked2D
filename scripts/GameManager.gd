@@ -128,24 +128,55 @@ func find_serving_station_for_recipe(recipe_id: String) -> Node:
 	# First, try to find a dedicated station for this recipe
 	for station in serving_stations:
 		if "recipe_id" in station and station.recipe_id == recipe_id:
-			# Check if station is available (not already completing a recipe)
+			# CRITICAL FIX: Check if station is available (not animating or completed)
+			if station.has_method("is_available") and not station.is_available():
+				continue  # Skip stations that are busy animating or already full
+			
+			# Extra check for the _is_animating flag specifically
+			if "_is_animating" in station and station._is_animating:
+				continue  # Station is animating completion
+			
+			# Check if recipe is already completed
 			if "_recipe_completed" in station and station._recipe_completed:
 				continue  # Skip this one, it's busy
+				
 			print("[GM] 🎯 Found dedicated serving station '%s' for recipe '%s'" % [station.name, recipe_id])
 			return station
 	
 	# Fallback: find a station that accepts all recipes (empty recipe_id)
 	for station in serving_stations:
 		if "recipe_id" in station and station.recipe_id == "":
+			# Same availability checks
+			if station.has_method("is_available") and not station.is_available():
+				continue
+			
+			if "_is_animating" in station and station._is_animating:
+				continue
+				
 			if "_recipe_completed" in station and station._recipe_completed:
 				continue
+				
 			print("[GM] 🎯 Using universal serving station '%s' for recipe '%s'" % [station.name, recipe_id])
 			return station
 	
-	# If no match found, this is an error - don't use wrong station
-	push_error("[GM] ❌ No serving station found for recipe '%s'! Please add one." % recipe_id)
-	return null
-
+	# IMPORTANT: If no station found, it might be temporarily busy animating
+	# Check if there's at least one station for this recipe that exists
+	var has_station_for_recipe = false
+	for station in serving_stations:
+		if ("recipe_id" in station and station.recipe_id == recipe_id) or \
+		   ("recipe_id" in station and station.recipe_id == ""):
+			has_station_for_recipe = true
+			break
+	
+	if has_station_for_recipe:
+		# Station exists but is temporarily busy - this is NOT an error
+		print("[GM] ⏳ Serving station for recipe '%s' temporarily busy (animating)" % recipe_id)
+		return null
+	else:
+		# No station exists for this recipe at all - this IS an error
+		push_error("[GM] ❌ No serving station found for recipe '%s'! Please add one." % recipe_id)
+		return null
+		
 
 # ==================== RECIPE SETUP ====================
 func _setup_recipes() -> void:
@@ -534,14 +565,17 @@ func spawn_ingredient(type: String = "", parent_node: Node = null) -> Node:
 	
 	var instance = ingredient_scene.instantiate()
 	
-	var parent = parent_node if parent_node else get_parent()
-	parent.add_child(instance)
-	
 	if type != "" and instance.has_method("set_type"):
 		instance.set_type(type)
+	elif type != "":
+		if "type" in instance:
+			instance.type = type
 	
 	instance.name = "Ingredient_%d" % _spawn_idx
 	_spawn_idx += 1
+	
+	var parent = parent_node if parent_node else get_parent()
+	parent.add_child(instance)
 	
 	return instance
 

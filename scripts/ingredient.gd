@@ -6,7 +6,8 @@ var _gm: Node = null
 var _scale_override: Vector2 = Vector2.ZERO
 var current_recipe_id: String = ""
 
-@onready var sprite: Sprite2D = $Sprite2D
+# Use @onready but also add null checks everywhere
+@onready var sprite: Sprite2D = $Sprite2D if has_node("Sprite2D") else null
 
 const ICONS := {
 	# Base ingredients
@@ -110,9 +111,28 @@ const TEXTURE_SCALES := {
 func _ready() -> void:
 	_gm = get_tree().get_first_node_in_group("game_manager")
 	
-	# Initialize visual
-	update_visual()
-	print("[INGREDIENT] Created: type='%s', status='%s', visible=%s" % [type, status, sprite.visible if sprite else false])
+	# CRITICAL FIX: Make sure sprite exists before using it
+	if not sprite and has_node("Sprite2D"):
+		sprite = $Sprite2D
+	
+	# Initialize visual only if sprite is ready
+	if sprite:
+		update_visual()
+		print("[INGREDIENT] Created: type='%s', status='%s', visible=%s" % [type, status, sprite.visible])
+	else:
+		# Defer visual update until sprite is available
+		call_deferred("_deferred_visual_update")
+
+func _deferred_visual_update() -> void:
+	"""Update visual after scene is fully loaded"""
+	if not sprite and has_node("Sprite2D"):
+		sprite = $Sprite2D
+	
+	if sprite:
+		update_visual()
+		print("[INGREDIENT] Deferred init: type='%s', status='%s'" % [type, status])
+	else:
+		push_error("[INGREDIENT] CRITICAL: No Sprite2D node found even after deferring!")
 
 func set_type(t: String) -> void:
 	type = t
@@ -127,7 +147,6 @@ func set_type(t: String) -> void:
 	else:
 		status = "raw"
 	
-	#print("[INGREDIENT] set_type('%s') -> status='%s'" % [type, status])
 	update_visual()
 
 func get_type() -> String:
@@ -139,9 +158,13 @@ func set_scale_override(new_scale: Vector2) -> void:
 	update_visual()
 
 func update_visual() -> void:
+	# CRITICAL FIX: Always check if sprite exists
 	if not sprite:
-		push_error("[INGREDIENT] Sprite2D node missing!")
-		return
+		if has_node("Sprite2D"):
+			sprite = $Sprite2D
+		else:
+			# Sprite not ready yet, defer the update
+			return
 	
 	# Make sure sprite is visible and has proper modulate
 	sprite.visible = true
@@ -150,14 +173,12 @@ func update_visual() -> void:
 	var tex = ICONS.get(type, null)
 	if tex:
 		sprite.texture = tex
-		#print("[INGREDIENT] Visual updated: type='%s', texture loaded" % type)
 	else:
 		# Try base name fallback
 		var base := _base_name(type)
 		var tex2 = ICONS.get(base, null)
 		if tex2:
 			sprite.texture = tex2
-			#print("[INGREDIENT] Visual updated: base='%s', texture loaded" % base)
 		else:
 			# Show a placeholder
 			sprite.visible = true
@@ -182,7 +203,6 @@ func _apply_scale() -> void:
 		final_scale = _scale_override
 	
 	scale = final_scale
-	#print("[INGREDIENT] Scale set: %v (type: %s, mult: %.2f)" % [final_scale, type, scale_mult])
 
 func _base_name(t: String) -> String:
 	if t.begins_with("chopped_"):
