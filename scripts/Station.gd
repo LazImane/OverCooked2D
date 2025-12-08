@@ -9,6 +9,7 @@ var current_item: String = ""
 @export var station_id: int = -1
 var progress_label: Label = null
 
+
 # For serving station: track ingredients by recipe
 var served_ingredients: Array = []
 var served_ingredient_types: Array = []  # NEW: Track what types we've added
@@ -36,14 +37,12 @@ func _create_progress_label() -> void:
 	progress_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	progress_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	
-	# Style the label
-	progress_label.add_theme_font_size_override("font_size", 14)
+	progress_label.add_theme_font_size_override("font_size", 12)
 	progress_label.add_theme_color_override("font_color", Color.WHITE)
 	progress_label.add_theme_color_override("font_outline_color", Color.BLACK)
 	progress_label.add_theme_constant_override("outline_size", 3)
 	
-	# Position above the station
-	progress_label.position = Vector2(-25, -45)
+	progress_label.position = Vector2(-25, -35)
 	progress_label.size = Vector2(50, 25)
 	
 	add_child(progress_label)
@@ -457,7 +456,6 @@ func _update_progress_display() -> void:
 		progress_label.text = ""
 		return
 	
-	# Create visual progress bar: (•••_)
 	var filled = "•" if current >= 1 else "_"
 	var filled2 = "•" if current >= 2 else "_"
 	var filled3 = "•" if current >= 3 else "_"
